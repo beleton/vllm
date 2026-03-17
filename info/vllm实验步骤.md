@@ -14,6 +14,7 @@ sudo /opt/AMDuProf_5.2-606/bin/AMDPcmSetCapability.sh
 
 3. 启动vllm，其中--tensor-parallel-size根据不同的NPS来指定
 ``` bash
+conda activate vllm-cpu
 vllm serve /models/DeepSeek-R1-Distill-Llama-8B \
 	--served-model-name DeepSeek-R1-Distill-Llama-8B \
 	--port 8122 \
@@ -26,6 +27,7 @@ vllm serve /models/DeepSeek-R1-Distill-Llama-8B \
 
 4. evalscope命令发起推理请求，测试性能
 ``` bash
+conda activate evalscope
 evalscope perf \
 	--model DeepSeek-R1-Distill-Llama-8B \
 	--parallel 1 2 4 8 16 32 64 \

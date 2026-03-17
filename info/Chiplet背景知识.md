@@ -44,8 +44,6 @@ L3PMCx04属于L3缓存性能监控计数器，按照CCX的层级定义。命中�
 `AMDuProfCLI info --system` 查看系统信息
 
 
-
-
 # 相关研究
 ## Sandwich
 ### 问题
@@ -56,7 +54,6 @@ CPU进行LLM推理效率低下，同时体现在Prefill阶段和Decdoe阶段：
 ###  解决方案
 - 对于Decode阶段，论文发现Decode阶段是内存带宽密集型，减少活跃核心数量、依据物理拓扑选择特定核心，反而能减少对共享资源（如内存带宽、LLC Tags）的争抢，从而提高 Token 生成速度。
 - 文章提出了一种树状结构（TopoTree）来抽象 CPU 的硬件拓扑（从 Socket 到 NUMA 再到具体的共享 Cache 结构），并在树上进行变换搜索，以找到最佳的核心绑定配置。
-
 
 ## ARCAS: Adaptive Runtime System for Chiplet-Aware  Scheduling
 ### 问题

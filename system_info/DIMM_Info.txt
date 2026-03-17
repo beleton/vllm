@@ -1,0 +1,29 @@
+# 1) DIMM 槽位与容量（你已经导出过）
+sudo dmidecode -t memory > ./DIMM_Name.txt
+
+# 2) 只看每个槽位是否插条
+awk '
+/^Memory Device$/ {f=1; loc=""; size=""; next}
+f && /^\tLocator:/ {loc=$2}
+f && /^\tSize:/ {size=$2" "$3}
+f && /^\tType Detail:/ {if (loc!="") printf "%-10s %s\n", loc, size; f=0}
+' /home/zjj/vllm/DIMM_Name.txt
+
+# 3) NUMA 节点容量/CPU 归属
+numactl --hardware
+lscpu | grep "Socket\\(s\\)|NUMA node\\(s\\)|NUMA node[0-9]+ CPU\\(s\\)"
+
+# 4) EDAC 看到的每个 socket 活跃内存通道号
+for mc in /sys/devices/system/edac/mc/mc*; do
+  chs=$(for f in $mc/rank*/dimm_location; do awk '{print $4}' "$f"; done | sort -n | uniq | xargs)
+  echo "$(basename "$mc"): channels {$chs}"
+done
+
+# 5) 从 NPS=4 MLC 结果提取每个 NUMA 的本地带宽（可判断 1 通道/2 通道）
+awk '
+/Measuring Memory Bandwidths between nodes within system/ {inbw=1; next}
+/Measuring Loaded Latencies for the system/ {inbw=0}
+inbw && $1 ~ /^[0-7]$/ {
+  n=$1; printf("node%s local_bw=%s MB/s\n", n, $(n+2));
+}
+' /home/zjj/vllm/test_results/NPS_4_MLC.txt

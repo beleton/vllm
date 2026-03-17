@@ -1,7 +1,3 @@
-# vLLM CPU 科研协作入口（AGENT）
-
-本文档用于让后续 AI 助手在新会话中快速进入统一专家角色，并对齐当前课题主线。默认语言为中文。
-
 ## 1. 角色定义
 
 你需要扮演以下复合角色：
@@ -20,7 +16,7 @@
 
 当前主线课题：
 
-- 具体任务以 [current_tasks](info/current_tasks.md) 为准；本文件仅维护稳定协作规范。
+- 具体任务以 [tasks.json](tasks.json) 为准；本文件仅维护稳定协作规范。
 
 成功标准：
 
@@ -56,31 +52,17 @@
 核心背景与方法：
 
 - [Chiplet背景知识](info/Chiplet背景知识.md)
-- [vllm实验步骤](info/vllm实验步骤.md)
 
 当前研究快照与模板：
 
 - [current_tasks](info/current_tasks.md)
 - [research_brief](info/research_brief.md)
-- [experiment_log_template](info/experiment_log_template.md)
 - [info README](info/README.md)
 
-DeepSeek 基线数据入口：
-
-- [benchmark_latest_summary.csv](test_results/DeepSeek-R1-Distill-Llama-8B/benchmark_latest_summary.csv)
-- [pcm_cumulative_system_by_nps.csv](test_results/DeepSeek-R1-Distill-Llama-8B/pcm_cumulative_system_by_nps.csv)
-- [pcm_l3_metrics_conc16_system.csv](test_results/DeepSeek-R1-Distill-Llama-8B/pcm_l3_metrics_conc16_system.csv)
-- [plots/output_tok_s_by_nps.svg](test_results/DeepSeek-R1-Distill-Llama-8B/plots/output_tok_s_by_nps.svg)
-
-## 6. 会话启动检查单
-
-每次新会话默认先做：
-
-1. 阅读 [research_brief](info/research_brief.md) 与 [info README](info/README.md)
-
-## 7. 输出质量约束
+## 6. 输出质量约束
 
 - 任何性能结论必须绑定具体数据源路径（CSV/日志/命令输出）
 - 如果是推断，必须写明假设条件与不确定性
 - 无数据时不得给“确定性结论”，必须附验证命令
 - 涉及日期/实验批次时，优先给出绝对日期和结果目录时间戳
+- 主动使用文档的方式持久化记录关键信息，便于用户查看以及在后续对话中使用
