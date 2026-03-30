@@ -51,6 +51,19 @@ evalscope perf \
 	--tokenizer-path /models/Qwen3-30B-A3B \
 	--outputs-dir /home/zjj/vllm/test_results/Qwen3-30B-A3B/NPS1_TP2/evalscope_res
 ```
+
+evalscope perf \
+	--model Qwen3-30B-A3B \
+	--parallel 16 \
+	--number 16 \
+	--url http://0.0.0.0:8122/v1/chat/completions \
+	--api openai \
+	--dataset random \
+	--max-tokens 1024 --min-tokens 1024 \
+	--prefix-length 0 \
+	--min-prompt-length 1024 --max-prompt-length 1024 \
+	--tokenizer-path /models/Qwen3-30B-A3B
+
 ---
 
 ## 2. Batch-1：内存互连 + miss/TLB

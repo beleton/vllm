@@ -1,18 +1,7 @@
-# info 最小索引
-
-用途：本目录只做按需检索。默认上下文只保留本文件；其它文档在确有需要时再打开。
-
-## 优先入口
-
-- `Chiplet背景知识.md`：Chiplet / NUMA / L3 最小背景
-- `AMDuProf_context.md`：AMDuProf / PCM 指标与术语速记
-- `experiment_ops/README.md`：实验步骤、命令、模板
-- `vllm_analysis/README.md`：vLLM 流程与根因分析
-- `实验记录/`：历史实验总结
-
-## 何时查看
-
-- 要复现实验：看 `experiment_ops/README.md`
-- 要解释性能现象：看 `vllm_analysis/README.md`
-- 要解释计数器：看 `AMDuProf_context.md`
-- 要补 Chiplet 背景：看 `Chiplet背景知识.md`
+# info 索引
+- `Chiplet背景知识.md`：Chiplet、NUMA 与 L3 背景速览
+- `AMDuProf_context.md`：计数器与 PCM 指标速记
+- `experiment_ops/README.md`：experiment_ops 目录索引/实验入口
+- `vllm_analysis/README.md`：vllm_analysis 目录索引/性能与源码机制解释入口
+- `实验记录/实验总结_1.md`：实验记录/ 目录中的历史批次总结
+- `实验记录/2026-03-30_下一步研究计划.md`：基于 `info/进展.md` 整理的下一阶段研究方向与实验优先级

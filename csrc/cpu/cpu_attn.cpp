@@ -1,3 +1,6 @@
+#include <cstdlib>
+#include <thread>
+
 #include "cpu_attn_vec.hpp"
 #include "cpu_attn_vec16.hpp"
 
@@ -74,6 +77,25 @@
       }                                                                       \
     }                                                                         \
   }()
+
+extern "C" volatile int vllm_cpu_attn_debug_wait = 0;
+
+namespace {
+
+bool should_debug_wait_on_first_cpu_attention_call() {
+  const char* env = std::getenv("VLLM_CPU_ATTN_DEBUG_WAIT_ON_FIRST_CALL");
+  return env != nullptr && env[0] != '\0' && env[0] != '0';
+}
+
+void maybe_wait_on_first_cpu_attention_call() {
+  if (should_debug_wait_on_first_cpu_attention_call()) {
+    while (vllm_cpu_attn_debug_wait == 0) {
+      std::this_thread::yield();
+    }
+  }
+}
+
+}  // namespace
 
 torch::Tensor get_scheduler_metadata(
     const int64_t num_req, const int64_t num_heads_q,
@@ -216,6 +238,8 @@ void cpu_attention_with_kv_cache(
     const double softcap, const torch::Tensor& scheduler_metadata,
     const std::optional<torch::Tensor>& s_aux  // [num_heads]
 ) {
+  maybe_wait_on_first_cpu_attention_call();
+
   TORCH_CHECK_EQ(query.dim(), 3);
   TORCH_CHECK_EQ(query.stride(2), 1);
   TORCH_CHECK_EQ(key_cache.dim(), 4);

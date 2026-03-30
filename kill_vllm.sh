@@ -1,0 +1,1 @@
+ps -u "$USER" -eo pid=,args= | awk 'BEGIN{IGNORECASE=1} /vllm|worker_tp/ {print $1}' | xargs -r kill

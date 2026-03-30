@@ -6,6 +6,9 @@ from vllm.entrypoints.cli.benchmark.mm_processor import (
 )
 from vllm.entrypoints.cli.benchmark.serve import BenchmarkServingSubcommand
 from vllm.entrypoints.cli.benchmark.startup import BenchmarkStartupSubcommand
+from vllm.entrypoints.cli.benchmark.strict_batch import (
+    BenchmarkStrictBatchSubcommand,
+)
 from vllm.entrypoints.cli.benchmark.sweep import BenchmarkSweepSubcommand
 from vllm.entrypoints.cli.benchmark.throughput import BenchmarkThroughputSubcommand
 
@@ -14,6 +17,7 @@ __all__: list[str] = [
     "BenchmarkMMProcessorSubcommand",
     "BenchmarkServingSubcommand",
     "BenchmarkStartupSubcommand",
+    "BenchmarkStrictBatchSubcommand",
     "BenchmarkSweepSubcommand",
     "BenchmarkThroughputSubcommand",
 ]

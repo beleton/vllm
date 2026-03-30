@@ -1,0 +1,46 @@
+{
+	"sources" : 
+	[
+		{
+			"file" : "/home/zjj/vllm/build-clangd/_deps/onednn-subbuild/CMakeFiles/onednn-populate"
+		},
+		{
+			"file" : "/home/zjj/vllm/build-clangd/_deps/onednn-subbuild/CMakeFiles/onednn-populate.rule"
+		},
+		{
+			"file" : "/home/zjj/vllm/build-clangd/_deps/onednn-subbuild/CMakeFiles/onednn-populate-complete.rule"
+		},
+		{
+			"file" : "/home/zjj/vllm/build-clangd/_deps/onednn-subbuild/onednn-populate-prefix/src/onednn-populate-stamp/onednn-populate-build.rule"
+		},
+		{
+			"file" : "/home/zjj/vllm/build-clangd/_deps/onednn-subbuild/onednn-populate-prefix/src/onednn-populate-stamp/onednn-populate-configure.rule"
+		},
+		{
+			"file" : "/home/zjj/vllm/build-clangd/_deps/onednn-subbuild/onednn-populate-prefix/src/onednn-populate-stamp/onednn-populate-download.rule"
+		},
+		{
+			"file" : "/home/zjj/vllm/build-clangd/_deps/onednn-subbuild/onednn-populate-prefix/src/onednn-populate-stamp/onednn-populate-install.rule"
+		},
+		{
+			"file" : "/home/zjj/vllm/build-clangd/_deps/onednn-subbuild/onednn-populate-prefix/src/onednn-populate-stamp/onednn-populate-mkdir.rule"
+		},
+		{
+			"file" : "/home/zjj/vllm/build-clangd/_deps/onednn-subbuild/onednn-populate-prefix/src/onednn-populate-stamp/onednn-populate-patch.rule"
+		},
+		{
+			"file" : "/home/zjj/vllm/build-clangd/_deps/onednn-subbuild/onednn-populate-prefix/src/onednn-populate-stamp/onednn-populate-test.rule"
+		},
+		{
+			"file" : "/home/zjj/vllm/build-clangd/_deps/onednn-subbuild/onednn-populate-prefix/src/onednn-populate-stamp/onednn-populate-update.rule"
+		}
+	],
+	"target" : 
+	{
+		"labels" : 
+		[
+			"onednn-populate"
+		],
+		"name" : "onednn-populate"
+	}
+}

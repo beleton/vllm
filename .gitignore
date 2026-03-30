@@ -240,4 +240,5 @@ vllm/grpc/vllm_engine_pb2_grpc.py
 vllm/grpc/vllm_engine_pb2.pyi
 
 test_results/
+build-clangd/
 bak/

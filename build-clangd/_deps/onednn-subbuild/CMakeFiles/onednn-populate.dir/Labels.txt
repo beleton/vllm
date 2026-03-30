@@ -1,0 +1,14 @@
+# Target labels
+ onednn-populate
+# Source files and their labels
+/home/zjj/vllm/build-clangd/_deps/onednn-subbuild/CMakeFiles/onednn-populate
+/home/zjj/vllm/build-clangd/_deps/onednn-subbuild/CMakeFiles/onednn-populate.rule
+/home/zjj/vllm/build-clangd/_deps/onednn-subbuild/CMakeFiles/onednn-populate-complete.rule
+/home/zjj/vllm/build-clangd/_deps/onednn-subbuild/onednn-populate-prefix/src/onednn-populate-stamp/onednn-populate-build.rule
+/home/zjj/vllm/build-clangd/_deps/onednn-subbuild/onednn-populate-prefix/src/onednn-populate-stamp/onednn-populate-configure.rule
+/home/zjj/vllm/build-clangd/_deps/onednn-subbuild/onednn-populate-prefix/src/onednn-populate-stamp/onednn-populate-download.rule
+/home/zjj/vllm/build-clangd/_deps/onednn-subbuild/onednn-populate-prefix/src/onednn-populate-stamp/onednn-populate-install.rule
+/home/zjj/vllm/build-clangd/_deps/onednn-subbuild/onednn-populate-prefix/src/onednn-populate-stamp/onednn-populate-mkdir.rule
+/home/zjj/vllm/build-clangd/_deps/onednn-subbuild/onednn-populate-prefix/src/onednn-populate-stamp/onednn-populate-patch.rule
+/home/zjj/vllm/build-clangd/_deps/onednn-subbuild/onednn-populate-prefix/src/onednn-populate-stamp/onednn-populate-test.rule
+/home/zjj/vllm/build-clangd/_deps/onednn-subbuild/onednn-populate-prefix/src/onednn-populate-stamp/onednn-populate-update.rule

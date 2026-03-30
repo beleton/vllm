@@ -20,6 +20,3 @@
 
 - 常见坑：
   - 从 PDF 复制命令时可能带 Unicode 横杠，命令里应使用 ASCII `-`，例如 `AMDuProfCLI info --list pmu-events`。
-
-- 回答风格：
-  - 用中文，简洁、准确，尽量引用上述本地文档和配置。

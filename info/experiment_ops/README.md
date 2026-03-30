@@ -1,20 +1,9 @@
-# 实验操作文档索引
-
-本目录集中存放“怎么做实验”的操作文档，避免与背景知识、研究结论、源码分析混在一起。
-
-## 文件列表
-
-| 文件 | 用途 |
-| --- | --- |
-| `vllm实验步骤.md` | NPS/TP 主线实验步骤、已有结果与下一步计划 |
-| `DeepSeek-R1-Distill-Llama-8B分批实验命令.md` | DeepSeek-R1-Distill-Llama-8B 的 AMDuProfPcm 分批采样命令 |
-| `Qwen3-30B-A3B_AMDuProfPcm分批实验命令.md` | Qwen3-30B-A3B 的 AMDuProfPcm 分批采样命令 |
-| `TinyMoe_AMDuProfPcm分批实验命令.md` | TinyMoe 在 `evalscope perf` 场景下的分批实验命令 |
-| `TinyMoe_AMDuProfPcm_vllm_bench实验命令.md` | TinyMoe 在 `vllm bench serve` 场景下的实验命令 |
-| `experiment_log_template.md` | 标准化实验记录模板 |
-
-## 使用建议
-
-- 想了解背景、术语和机制：先回到上级目录查看 `info/README.md`
-- 想直接复现实验：从 `vllm实验步骤.md` 开始，再进入对应模型命令文档
-- 想沉淀一轮实验结果：复用 `experiment_log_template.md`
+# experiment_ops 索引
+- `vllmNPS实验步骤.md`：记录 NPS/TP 主线实验配置、读数、结论与下一步计划，适合作为复现实验的起点。
+- `DeepSeek-R1-Distill-Llama-8B分批实验命令.md`：提供针对 DeepSeek-R1-Distill-Llama-8B 的 NPS4_TP8 AMDuProfPcm batch1~6 命令及依赖配置。
+- `Qwen3-30B-A3B_AMDuProfPcm分批实验命令.md`：列出 Qwen3-30B-A3B NPS1_TP2 的分批采样流程与常用输出路径。
+- `Qwen3-30B-A3B_vllm_bench_Prefill_Decode实验步骤.md`：记录 Prefill/Decode 分相在 strict-batch 下的端到端命令与 PCM 对应时间点，帮助定位 Prefill vs Decode 的指标差异。
+- `Qwen3-30B-A3B_P0_AMDuProfCLI函数级归因实验步骤.md`：用于 `P0` 阶段的 `hotspots + IBS L3-miss` 函数级归因，回答高 `L3 miss` 主要落在哪条调用链。
+- `Qwen3-30B-A3B_attention微基准实验步骤.md`：用于 attention 微基准（`benchmark_cpu_attn.py`）与 kv_split/PCM 对照，接在归因之后进一步测 L3/memory 行为。
+- `Qwen3-30B-A3B_strict-batch_attention调试.md`：说明在 vllm bench strict-batch 下调试 attention 的 gdb 断点、TP=1/TP=2 的 attach 流程与注意事项。
+- `gdb_debug.md`：调试附录，列出 strict-batch、ps-附加与断点命令片段。

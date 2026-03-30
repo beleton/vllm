@@ -1,0 +1,18 @@
+2026-03-30 01:42:32 +0800
+- 已新增研究计划文档：`info/实验记录/2026-03-30_下一步研究计划.md`
+- 下一步优先顺序：
+  1. `decode_B16_I1_O1024` / `prefill_B16_I1024_O1` 跑 `AMDuProfCLI hotspots + IBS L3-miss`
+  2. 复验异常批次 `prefill_B16_I256_O1`
+  3. 若归因结果支持 attention 主导，再做 replay 型 attention 局部性试验台
+- 注意：
+  - `benchmark_cpu_attn.py` 当前随机 `block_table/slot_mapping` 不能直接解释端到端 `Prefill/Decode` 差异
+  - `prefill_B16_I256_O1` 在 `2026-03-26 14:26:52` 批次中给出 `Total Mem Bw=6.71 GB/s`，后续引用前应先复验
+
+2026-03-30 16:10:00 +0800
+- 已新增 `P0` 专用实验文档：`info/experiment_ops/Qwen3-30B-A3B_P0_AMDuProfCLI函数级归因实验步骤.md`
+- 这份文档只覆盖当前最优先的 4 组归因实验：
+  - `decode_B16_I1_O1024`：`hotspots`
+  - `decode_B16_I1_O1024`：`IBS L3-miss`
+  - `prefill_B16_I1024_O1`：`hotspots`
+  - `prefill_B16_I1024_O1`：`IBS L3-miss`
+- 原先已删除的总步骤文档不再作为入口引用

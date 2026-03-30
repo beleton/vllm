@@ -1,10 +1,76 @@
 {
-    "project": "vllm源码分析",
-    "updated_at": "2026-03-17",
+    "project": "Chiplet CPU推理加速",
+    "updated_at": "2026-03-30",
     "tasks": [
         {
             "id": "0",
-            "description": "这是一个示例",
+            "description": "示例",
+            "status": "completed",
+            "passes": true
+        },
+        {
+            "id": "1",
+            "description": "并行检查 info 文档记录完整性，并审查 strict_batch.py 是否存在错误",
+            "status": "completed",
+            "passes": true
+        },
+        {
+            "id": "2",
+            "description": "修复 info 文档中的悬空索引，删除不存在的入口引用",
+            "status": "completed",
+            "passes": true
+        },
+        {
+            "id": "3",
+            "description": "将现有 `info/README.md`、`info/experiment_ops/README.md`、`info/vllm_analysis/README.md` 统一改写为面向 AI 的精简路由文档",
+            "status": "completed",
+            "passes": true
+        },
+        {
+            "id": "4",
+            "description": "将 `info/README.md`、`info/experiment_ops/README.md`、`info/vllm_analysis/README.md` 进一步收缩为只保留文件索引",
+            "status": "completed",
+            "passes": true
+        },
+        {
+            "id": "5",
+            "description": "核对并改写 `info/进展.md` 的“当前进展”部分，按论文、源码和实验结果补齐证据边界",
+            "status": "completed",
+            "passes": true
+        },
+        {
+            "id": "6",
+            "description": "创建用于整理和维护 `info/` 目录索引与文档导航的项目级 subagent 配置文件",
+            "status": "completed",
+            "passes": true
+        },
+        {
+            "id": "7",
+            "description": "根据 `info/进展.md` 梳理下一步研究方向与实验计划，并写成便于后续接续的文档",
+            "status": "completed",
+            "passes": true
+        },
+        {
+            "id": "8",
+            "description": "对 `decode_B16_I1_O1024` 与 `prefill_B16_I1024_O1` 运行 `AMDuProfCLI hotspots + IBS L3-miss`，补齐函数级归因证据",
+            "status": "pending",
+            "passes": false
+        },
+        {
+            "id": "9",
+            "description": "复验异常批次 `prefill_B16_I256_O1`，并补齐 prefill 长度 sweep 以定位 L3 行为转折区间",
+            "status": "pending",
+            "passes": false
+        },
+        {
+            "id": "10",
+            "description": "建立可复用真实 `block_table/slot_mapping/query_start_loc/seq_lens` 的 attention 局部性试验台，验证 `kv_head` 局部性假设",
+            "status": "pending",
+            "passes": false
+        },
+        {
+            "id": "11",
+            "description": "为 `P0` 编写独立的 `AMDuProfCLI hotspots + IBS L3-miss` 实验文档，并挂到 `experiment_ops` 索引",
             "status": "completed",
             "passes": true
         }

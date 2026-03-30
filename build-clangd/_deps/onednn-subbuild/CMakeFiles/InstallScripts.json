@@ -1,0 +1,7 @@
+{
+	"InstallScripts" : 
+	[
+		"/home/zjj/vllm/build-clangd/_deps/onednn-subbuild/cmake_install.cmake"
+	],
+	"Parallel" : false
+}
