@@ -8,8 +8,16 @@
 
 ## 0. 这份文档回答什么问题
 
-- `benchmark_cpu_attn.py` 直接调用 `cpu_attn_reshape_and_cache`、`cpu_attn_get_scheduler_metadata`、`cpu_attention_with_kv_cache`，比 `vllm bench strict-batch` 更接近 attention kernel 本身。证据：`benchmarks/kernels/cpu/benchmark_cpu_attn.py:46-183`
+- `benchmark_cpu_attn.py` 直接调用 `cpu_attn_reshape_and_cache`、`cpu_attn_get_scheduler_metadata`、`cpu_attention_with_kv_cache`，因此它测的是 **CPU attention 核心算子路径**，不是完整的 vLLM request 执行链，也不是完整 decoder layer。证据：`benchmarks/kernels/cpu/benchmark_cpu_attn.py:46-158`
 - 这个微基准不加载 `/models/Qwen3-30B-A3B` 的真实权重；它只用从模型配置推出来的 attention shape。证据：同文件 `main(...)` 参数与张量构造逻辑。
+- 它内部自己构造输入：`block_tables` 用 `torch.randint(...)` 随机生成，`slot_mapping` 用连续 `torch.arange(...)` 生成，`query/key/value` 也都是合成张量。证据：`benchmarks/kernels/cpu/benchmark_cpu_attn.py:80-114`
+- 因此，这份微基准适合回答“attention 核心算子在某种 shape 下怎么表现”，不适合直接回答“端到端 `Prefill/Decode` 差异主要来自哪一层”。
+
+## 0.1 使用边界
+
+- 如果当前问题是“`decode` 的高 `L3 miss` 到底主要来自 attention、MoE 还是 TP 通信”，优先做 `AMDuProfCLI hotspots + IBS L3-miss`，不要先看这份微基准。
+- 如果当前问题是“在控制住 shape 以后，attention 核心算子本身对 `kv_split`、`q_len/kv_len`、局部性是否敏感”，这份文档才是合适入口。
+- 解释结果时要记住：真实路径里 `cpu_attention_with_kv_cache` 之后还有 `o_proj`、可能的 TP `all_reduce`，以及更上游真实 `block_table/slot_mapping` 组织；这些都不在本微基准范围内。
 
 ## 1. 一次性前置
 

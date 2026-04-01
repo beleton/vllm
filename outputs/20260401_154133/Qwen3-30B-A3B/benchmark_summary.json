@@ -1,0 +1,17 @@
+{
+    "Time taken for tests (s)": 70.4468,
+    "Number of concurrency": 1,
+    "Request rate (req/s)": -1,
+    "Total requests": 1,
+    "Succeed requests": 1,
+    "Failed requests": 0,
+    "Output token throughput (tok/s)": 14.5358,
+    "Total token throughput (tok/s)": 14.6494,
+    "Request throughput (req/s)": 0.0142,
+    "Average latency (s)": 70.4468,
+    "Average time to first token (s)": 0.2359,
+    "Average time per output token (s)": 0.0686,
+    "Average inter-token latency (s)": 0.0686,
+    "Average input tokens per request": 8.0,
+    "Average output tokens per request": 1024.0
+}

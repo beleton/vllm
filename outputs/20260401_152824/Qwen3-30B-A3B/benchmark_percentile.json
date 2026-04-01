@@ -1,0 +1,112 @@
+[
+    {
+        "Percentiles": "10%",
+        "TTFT (s)": NaN,
+        "ITL (s)": NaN,
+        "TPOT (s)": NaN,
+        "Latency (s)": NaN,
+        "Input tokens": NaN,
+        "Output tokens": NaN,
+        "Output (tok/s)": NaN,
+        "Total (tok/s)": NaN
+    },
+    {
+        "Percentiles": "25%",
+        "TTFT (s)": NaN,
+        "ITL (s)": NaN,
+        "TPOT (s)": NaN,
+        "Latency (s)": NaN,
+        "Input tokens": NaN,
+        "Output tokens": NaN,
+        "Output (tok/s)": NaN,
+        "Total (tok/s)": NaN
+    },
+    {
+        "Percentiles": "50%",
+        "TTFT (s)": NaN,
+        "ITL (s)": NaN,
+        "TPOT (s)": NaN,
+        "Latency (s)": NaN,
+        "Input tokens": NaN,
+        "Output tokens": NaN,
+        "Output (tok/s)": NaN,
+        "Total (tok/s)": NaN
+    },
+    {
+        "Percentiles": "66%",
+        "TTFT (s)": NaN,
+        "ITL (s)": NaN,
+        "TPOT (s)": NaN,
+        "Latency (s)": NaN,
+        "Input tokens": NaN,
+        "Output tokens": NaN,
+        "Output (tok/s)": NaN,
+        "Total (tok/s)": NaN
+    },
+    {
+        "Percentiles": "75%",
+        "TTFT (s)": NaN,
+        "ITL (s)": NaN,
+        "TPOT (s)": NaN,
+        "Latency (s)": NaN,
+        "Input tokens": NaN,
+        "Output tokens": NaN,
+        "Output (tok/s)": NaN,
+        "Total (tok/s)": NaN
+    },
+    {
+        "Percentiles": "80%",
+        "TTFT (s)": NaN,
+        "ITL (s)": NaN,
+        "TPOT (s)": NaN,
+        "Latency (s)": NaN,
+        "Input tokens": NaN,
+        "Output tokens": NaN,
+        "Output (tok/s)": NaN,
+        "Total (tok/s)": NaN
+    },
+    {
+        "Percentiles": "90%",
+        "TTFT (s)": NaN,
+        "ITL (s)": NaN,
+        "TPOT (s)": NaN,
+        "Latency (s)": NaN,
+        "Input tokens": NaN,
+        "Output tokens": NaN,
+        "Output (tok/s)": NaN,
+        "Total (tok/s)": NaN
+    },
+    {
+        "Percentiles": "95%",
+        "TTFT (s)": NaN,
+        "ITL (s)": NaN,
+        "TPOT (s)": NaN,
+        "Latency (s)": NaN,
+        "Input tokens": NaN,
+        "Output tokens": NaN,
+        "Output (tok/s)": NaN,
+        "Total (tok/s)": NaN
+    },
+    {
+        "Percentiles": "98%",
+        "TTFT (s)": NaN,
+        "ITL (s)": NaN,
+        "TPOT (s)": NaN,
+        "Latency (s)": NaN,
+        "Input tokens": NaN,
+        "Output tokens": NaN,
+        "Output (tok/s)": NaN,
+        "Total (tok/s)": NaN
+    },
+    {
+        "Percentiles": "99%",
+        "TTFT (s)": NaN,
+        "ITL (s)": NaN,
+        "TPOT (s)": NaN,
+        "Latency (s)": NaN,
+        "Input tokens": NaN,
+        "Output tokens": NaN,
+        "Output (tok/s)": NaN,
+        "Total (tok/s)": NaN
+    }
+]

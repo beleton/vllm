@@ -1,18 +1,62 @@
-2026-03-30 01:42:32 +0800
-- 已新增研究计划文档：`info/实验记录/2026-03-30_下一步研究计划.md`
-- 下一步优先顺序：
-  1. `decode_B16_I1_O1024` / `prefill_B16_I1024_O1` 跑 `AMDuProfCLI hotspots + IBS L3-miss`
-  2. 复验异常批次 `prefill_B16_I256_O1`
-  3. 若归因结果支持 attention 主导，再做 replay 型 attention 局部性试验台
-- 注意：
-  - `benchmark_cpu_attn.py` 当前随机 `block_table/slot_mapping` 不能直接解释端到端 `Prefill/Decode` 差异
-  - `prefill_B16_I256_O1` 在 `2026-03-26 14:26:52` 批次中给出 `Total Mem Bw=6.71 GB/s`，后续引用前应先复验
+2026-04-01 16:38:00 +0800
+- `Qwen3-30B-A3B` 在 `NPS1_TP2` 下相对 `2026-03-11 20:33:50 +0800` 历史结果的性能回退，当前最强证据指向“本地 Debug 构建 + 新负载形态叠加”，不应再直接与旧批次横向比较。
+- 复现实验：
+  - 历史基线：`test_results/NPS_Test/Qwen3-30B-A3B/NPS1_TP2/evalscope_res/20260311_203244/Qwen3-30B-A3B/parallel_2_number_2/benchmark_summary.json`，`Average latency=29.5197s`、`Output token throughput=69.3761 tok/s`、`Average TTFT=1.9778s`。
+  - 当前同服务、同旧负载复现：`outputs/20260401_repro_oldload/20260401_163258/Qwen3-30B-A3B/benchmark_summary.json`，`Average latency=138.734s`、`Output token throughput=14.762 tok/s`、`Average TTFT=39.6392s`。
+  - 因此回退不是仅由 `min-prompt-length 2 --max-prompt-length 1024` 引起；即便恢复旧的固定 `1024` prompt，当前服务仍显著慢于历史基线。
+- 当前用户新命令还额外引入了负载形态变化：
+  - `outputs/20260401_161341/Qwen3-30B-A3B/benchmark.log` 显示 `Sampling input lengths from [0, 1023)`，`benchmark_summary.json` 显示 `Average input tokens per request=772.0`、`Average TTFT=21.6045s`。
+  - 这说明新命令里的随机 prompt 长度会进一步抬高 prefill/TTFT，但不是主要根因。
+- Debug 构建证据：
+  - 当前 `serve` 进程 `20084` 与 worker `20545/20546` 的 `/proc/<pid>/maps` 都加载 `/home/zjj/vllm/vllm/_C.abi3.so`。
+  - 该扩展时间戳为 `2026-03-25 20:23:31 +0800`；`build/temp.linux-x86_64-cpython-312/CMakeCache.txt` 记录 `CMAKE_BUILD_TYPE=Debug`。
+  - `build/temp.linux-x86_64-cpython-312/compile_commands.json` 中 `_C` 的 CPU 扩展编译命令只有 `-g`，未见 `-O2/-O3`；而 oneDNN 子构建是 `-O3 -DNDEBUG`。
+- 后续口径：
+  - 若要和 `2026-03-11` 结果对比，先重建非 Debug 的 `_C.abi3.so`，重启 `vllm serve`，再用旧负载 `parallel=2 number=2 prompt=1024 output=1024` 复测。
+  - 在结果文档中，单独标注 `2026-03-25 20:23:31 +0800` 这版本地 `_C.abi3.so` 为 Debug 构建，避免误与历史批次混用。
 
-2026-03-30 16:10:00 +0800
-- 已新增 `P0` 专用实验文档：`info/experiment_ops/Qwen3-30B-A3B_P0_AMDuProfCLI函数级归因实验步骤.md`
-- 这份文档只覆盖当前最优先的 4 组归因实验：
-  - `decode_B16_I1_O1024`：`hotspots`
-  - `decode_B16_I1_O1024`：`IBS L3-miss`
-  - `prefill_B16_I1024_O1`：`hotspots`
-  - `prefill_B16_I1024_O1`：`IBS L3-miss`
-- 原先已删除的总步骤文档不再作为入口引用
+2026-04-01 12:10:00 +0800
+- `AMDuProfCLI collect --config hotspots ... env ... vllm bench strict-batch ...` 在 CPU `TP=2` 场景下已确认不适合作为 `P0` 标准口径。
+- 失败证据：
+  - `2026-04-01 11:16:07 +0800` 的 session `test_results/PD_Test/Qwen3-30B-A3B/CLI_res/decode_B16_I1_O1024/hotspots/AMDuProf-env-Hotspots_Apr-01-2026_11-16-07`
+  - `report.csv` 中 `Profile Duration=7.910 seconds`，`Start Delay=300 seconds`，且 hottest functions/processes/modules 为空，说明目标进程在进入采样窗前已异常退出。
+  - 前台报错是 `AMDTPyTracer.py` 进入 `multiprocessing/spawn.py::spawn_main` 后触发 `AssertionError: Not forking`。
+- 根因链：
+  - CPU backend 强制 `VLLM_WORKER_MULTIPROC_METHOD=spawn`，证据：`vllm/platforms/cpu.py:273-276`。
+  - `TP=2` 时 worker 由 `MultiprocExecutor` 通过 multiprocessing context 拉起，证据：`vllm/v1/executor/multiproc_executor.py:136-165`、`613-624`。
+  - `AMDuProfCLI hotspots` 会给 Python 入口注入 `/opt/AMDuProf_5.2-606/bin/AMDTPyTracer.py`，该脚本对 `python -c ...` 直接 `exec(args)`，证据：`AMDTPyTracer.py:38-47`。
+- 后续口径：
+  - `hotspots` 改为“先启动 `strict-batch`，等 `Worker_TP* pid=` 出现在日志后，再用 `AMDuProfCLI collect -p <worker_pids>` attach”。
+  - `IBS L3-miss` 当前无同类 Python tracer 证据，可继续保留 launcher 模式，除非后续复现新的兼容性问题。
+
+2026-04-01 00:02:04 +0800
+- `strict-batch` 在 CPU `TP=2` 场景报 `RuntimeError: create shm in SHMManager failed. errno: 17` 时，已确认根因是 `/dev/shm` 里残留的 `cpushm` 文件与本次 `VLLM_DIST_IDENT` 命名冲突。
+- 源码证据：
+  - `vllm/v1/worker/cpu_worker.py:92` 把 `VLLM_DIST_IDENT` 设为 `distributed_init_method` 的端口号。
+  - `vllm/distributed/device_communicators/cpu_communicator.py:160-172` 用该端口号拼出 `group_name=<port>-tp:0-[0-1]-cpushm`，随后调用 `torch.ops._C.init_shm_manager(...)`。
+- 运行证据：
+  - `2026-03-31 23:58:17 +0800` 的 `/dev/shm` 列表里已有 `48271-tp:0-[0-1]-cpushm_{0,1}`。
+  - 强制 `VLLM_PORT=48271` 的最小复现命令在 `2026-03-31 23:59:30 +0800` 再次报同样的 `errno: 17`。
+  - 删除 `/dev/shm/48271-tp:0-[0-1]-cpushm_{0,1}` 后，用同一个 `VLLM_PORT=48271` 复跑，已在 `2026-04-01 00:01:03 +0800` 越过 SHM 初始化并进入 `cpu_model_runner.py:55` 的模型加载。
+- 后续处置口径：
+  - 看到该报错时，先按端口前缀检查 `/dev/shm/<port>-tp:0-[0-1]-cpushm_*` 是否存在，并用 `lsof` 确认无人占用。
+  - 若确认是孤儿文件，只删除对应端口的那一对 `cpushm` 文件后重跑；不要直接清空整个 `/dev/shm`。
+  - 该问题与 `AMDuProfPcm` 本身无直接证据关联，实质是 CPU TP 共享内存命名依赖端口号，而端口可能被后续运行复用。
+
+2026-03-31 20:27:37 +0800
+- 任务 `25` 执行时，shell 环境里没有 `PARALLEL_API_KEY` / `OPENROUTER_API_KEY`，因此未使用 `parallel_web.py` / `research_lookup.py`。
+- 本轮改用内置联网检索，并将检索轨迹手工保存到 `sources/search_20260331_202737_chiplet_llm_round1.md`。
+- 若后续任务 `26` 仍未补齐上述环境变量，可继续沿用该 fallback，但要保持把查询轨迹落到 `sources/`。
+
+2026-03-30 22:48:30 +0800
+- `AMDuProfPcm` launcher 校准新增实证：
+  - `prefill_B16_I128_O1` 的 session `test_results/PD_Test/Qwen3-30B-A3B/PCm_res/prefill_B16_I128_O1/metric2_l3_dc_l2_memory/AMDuProfPcm-Multi_Mar-30-2026_21-57-54` 已生成 `report-timeseries.csv`，但 `bench_res/.../result.json` 未生成。
+  - 到 `2026-03-30 22:48:30 +0800`，系统里只剩孤立 `AMDuProfPcm` 进程 `3994286`，已无 `vllm`/worker 子进程；随后需 `kill -9 3994286` 才清掉。
+  - 该现象说明：`-d` 到时后报告可能已经落盘，但 profiler/launcher 不一定会正常收尾，不能把较短 `-d` 当成 TP 场景的正常结束机制。
+- 最小对照：
+  - `AMDuProfPcm profile -m ipc -a -d 10 -O /tmp/pcm_short_target -- sleep 2`
+  - 实测约 `2.60s` 退出，说明只要目标程序先自然结束，`AMDuProfPcm` 会随之退出。
+- 后续执行口径：
+  - steady-state 校准时，优先减少 `--num-rounds` 让 `strict-batch` 自然结束，`-d` 只作为上界。
+  - 若 `report-timeseries.csv` / `report-cumulative.csv` 已生成但命令不退，先对残留 `AMDuProfPcm` 发 `SIGTERM` 或 `SIGINT`，等待补齐 `session.uprof` / `report.html`；不要先 `kill -9`。
+  - 仅当温和收尾后仍缺 `session.uprof` 时，才把该 session 视为“只能用 csv、无法再补 html”的残缺结果。

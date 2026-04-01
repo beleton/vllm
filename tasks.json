@@ -1,6 +1,6 @@
 {
     "project": "Chiplet CPU推理加速",
-    "updated_at": "2026-03-30",
+    "updated_at": "2026-04-01 22:41:30 +0800",
     "tasks": [
         {
             "id": "0",
@@ -53,12 +53,12 @@
         {
             "id": "8",
             "description": "对 `decode_B16_I1_O1024` 与 `prefill_B16_I1024_O1` 运行 `AMDuProfCLI hotspots + IBS L3-miss`，补齐函数级归因证据",
-            "status": "pending",
-            "passes": false
+            "status": "completed",
+            "passes": true
         },
         {
             "id": "9",
-            "description": "复验异常批次 `prefill_B16_I256_O1`，并补齐 prefill 长度 sweep 以定位 L3 行为转折区间",
+            "description": "补跑 `prefill_B16_I256_O1`，并补齐 prefill 长度 sweep 以定位 L3 行为转折区间",
             "status": "pending",
             "passes": false
         },
@@ -71,6 +71,144 @@
         {
             "id": "11",
             "description": "为 `P0` 编写独立的 `AMDuProfCLI hotspots + IBS L3-miss` 实验文档，并挂到 `experiment_ops` 索引",
+            "status": "completed",
+            "passes": true
+        },
+        {
+            "id": "12",
+            "description": "审查 `Qwen3-30B-A3B_P0_AMDuProfCLI函数级归因实验步骤.md` 中 `AMDuProfCLI` 命令的正确性与 miss 归因证据充分性",
+            "status": "completed",
+            "passes": true
+        },
+        {
+            "id": "13",
+            "description": "核对并修正 `test_results/PD_Test/Qwen3-30B-A3B/PCm_res/2026-03-26_qwen3-30b-a3b_pd_pcm_summary.md` 的 PCM 汇总结论与指标表头",
+            "status": "completed",
+            "passes": true
+        },
+        {
+            "id": "14",
+            "description": "修订 `Qwen3-30B-A3B_P0_AMDuProfCLI函数级归因实验步骤.md`，补 `IBS` 视图并补充 `--show-percentage` 使用说明",
+            "status": "completed",
+            "passes": true
+        },
+        {
+            "id": "15",
+            "description": "修订 `Qwen3-30B-A3B_P0_AMDuProfCLI函数级归因实验步骤.md`，显式加入 steady-state 时间窗参数与 launcher 模式说明",
+            "status": "completed",
+            "passes": true
+        },
+        {
+            "id": "16",
+            "description": "修订 `Qwen3-30B-A3B_vllm_bench_Prefill_Decode实验步骤.md`，改为由 `AMDuProfPcm profile -- <PROGRAM>` 直接启动 `strict-batch` 以观察启动到稳定运行的时间窗",
+            "status": "completed",
+            "passes": true
+        },
+        {
+            "id": "17",
+            "description": "精简 `process.txt`，只保留跨任务仍需使用的交接信息，不重复记录已沉淀到 `info/` 下的结论",
+            "status": "completed",
+            "passes": true
+        },
+        {
+            "id": "18",
+            "description": "补充 `AMDuProfPcm` launcher 校准在 TP 场景下的挂起证据，并修订实验文档与交接说明",
+            "status": "completed",
+            "passes": true
+        },
+        {
+            "id": "19",
+            "description": "为 `2026-03-26_qwen3-30b-a3b_pd_pcm_summary.md` 的 prefill/decode 长度扫描补入 `L3 Access (pti)` 指标",
+            "status": "completed",
+            "passes": true
+        },
+        {
+            "id": "20",
+            "description": "从 `2026-03-26_qwen3-30b-a3b_pd_pcm_summary.md` 的 prefill/decode 长度扫描表中删除时间戳与 `CPI` 列",
+            "status": "completed",
+            "passes": true
+        },
+        {
+            "id": "21",
+            "description": "将 `2026-03-26_qwen3-30b-a3b_pd_pcm_summary.md` 的 prefill/decode 长度扫描表按输入长度/输出长度升序重排",
+            "status": "completed",
+            "passes": true
+        },
+        {
+            "id": "22",
+            "description": "优化一段用于后续大模型研究的提示词，要求其先基于 `info/进展.md` 建立上下文，再比较 AMD/Intel chiplet CPU 架构差异、矩阵乘法特性，并评估 L3 感知数据放置与 AMX 是否正交",
+            "status": "completed",
+            "passes": true
+        },
+        {
+            "id": "23",
+            "description": "基于 `info/进展.md` 建立上下文，检索 AMD/Intel chiplet CPU 架构与矩阵乘法能力资料，分析 L3 感知数据放置与 AMX 是否正交，并形成研究文档",
+            "status": "completed",
+            "passes": true
+        },
+        {
+            "id": "24",
+            "description": "为 chiplet/NUMA/分片缓存相关工作检索建立任务链与本地文档骨架。主入口为 `info/ai-research/相关工作/README.md`，正式结果写入 `info/ai-research/相关工作/2026-03-31_chiplet_llm_相关工作检索清单.md`，候选池写入 `info/ai-research/相关工作/2026-03-31_chiplet_llm_相关工作候选池.md`。后续任务统一以这些文档作为交接入口。",
+            "status": "completed",
+            "passes": true
+        },
+        {
+            "id": "25",
+            "description": "第一轮广覆盖检索。开始前先读 `info/进展.md`、`tasks.json`、`process.txt`、`info/README.md`、`info/ai-research/相关工作/README.md`、正式清单和候选池。联网尽量全地建立候选资料池，优先一手来源；原始搜索结果保存到 `sources/`，候选条目追加到候选池文档。完成后在正式清单的“任务交接/下一步”中写明：已覆盖方向、命中较少方向、建议下一任务补检的关键词。",
+            "status": "completed",
+            "passes": true
+        },
+        {
+            "id": "26",
+            "description": "第二轮补漏检索。开始前先读与任务 25 相同的入口文件，并重点阅读候选池和正式清单中的“任务交接/下一步”。针对命中较少或空白方向补检，至少覆盖：LLM+chiplet CPU、attention/KV 共享工作集、multi-die GPU/GPU NUMA、分片 LLC/拓扑感知调度。继续将原始结果保存到 `sources/`，对候选池做去重和补充；完成后在正式清单的“任务交接/下一步”中写明剩余缺口和推荐阅读优先级草案。",
+            "status": "completed",
+            "passes": true
+        },
+        {
+            "id": "27",
+            "description": "整理最终资料清单。开始前先读前两轮产物与正式清单中的交接区。从候选池筛出有效资料，按“最直接相关：LLM 推理 + chiplet/NUMA/分片缓存”“高相关方法启发：attention / KV / 拓扑感知放置”“相近硬件启发：multi-die GPU / GPU NUMA / 分片 LLC”“背景与系统方法：NUMA-aware / cache-aware / topology-aware runtime”四类写入正式清单，并给出“哪些方向资料最多，哪些方向最缺”“哪几篇/哪几类资料最值得先读”两项总结。完成后将正式清单作为该主题的主交接文档。",
+            "status": "completed",
+            "passes": true
+        },
+        {
+            "id": "28",
+            "description": "基于 `info/进展.md` 与 `info/实验记录/2026-03-30_下一步研究计划.md` 梳理 chiplet 架构下 L3 指标关注重点，并给出高 L3 Miss 的归因判据与优化判断边界",
+            "status": "completed",
+            "passes": true
+        },
+        {
+            "id": "29",
+            "description": "诊断 `strict-batch` 在 CPU TP=2 场景下的 `create shm in SHMManager failed. errno: 17`，确认是否为 `/dev/shm` 残留 `cpushm` 命名冲突并给出处置口径",
+            "status": "completed",
+            "passes": true
+        },
+        {
+            "id": "30",
+            "description": "补强 `info/ai-research/2026-03-31_AMD_Intel_Chiplet_LLM_AMX_L3研究.md` 中 Intel chiplet / tile / disaggregated CPU 介绍，明确 `tile`、`SNC`、`LLC slice` 与 `compute/I/O tiles` 的层次关系",
+            "status": "completed",
+            "passes": true
+        },
+        {
+            "id": "31",
+            "description": "诊断 `2026-04-01` 当前 `Qwen3-30B-A3B NPS1_TP2` 性能相对 `2026-03-11` 历史批次显著回退的原因，并确认是否为负载变化还是本地 Debug 构建导致",
+            "status": "completed",
+            "passes": true
+        },
+        {
+            "id": "32",
+            "description": "在 `Qwen3-30B-A3B_P0_AMDuProfCLI函数级归因实验步骤.md` 中补充按最新 session 自动导出 `session.tar.gz` 供 Windows GUI 导入的 `translate --export-session` 命令",
+            "status": "completed",
+            "passes": true
+        },
+        {
+            "id": "33",
+            "description": "整理 `test_results/PD_Test/Qwen3-30B-A3B/CLI_res` 下 `Qwen3-30B-A3B P0` 的 `hotspots + IBS L3-miss` 结果，并按本地新式文档写入结果汇总",
+            "status": "completed",
+            "passes": true
+        },
+        {
+            "id": "34",
+            "description": "基于 `test_results/PD_Test/Qwen3-30B-A3B/CLI_res/2026-04-01_qwen3-30b-a3b_p0_cli_results.md` 分析 `Qwen3-30B-A3B P0` 的函数级归因结果，给出 `decode/prefill` 差异与后续实验建议",
             "status": "completed",
             "passes": true
         }
