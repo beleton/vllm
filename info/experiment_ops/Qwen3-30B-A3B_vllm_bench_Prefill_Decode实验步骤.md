@@ -76,7 +76,7 @@ sudo /opt/AMDuProf_5.2-606/bin/AMDPcmSetCapability.sh
 ```bash
 METRIC=metric2_l3_dc_l2_memory
 BATCH_SIZE=16
-INPUT_LEN=1024
+INPUT_LEN=128
 OUTPUT_LEN=1
 RESULT_DIR=/home/zjj/vllm/test_results/PD_Test/Qwen3-30B-A3B/bench_res/prefill_B${BATCH_SIZE}_I${INPUT_LEN}_O${OUTPUT_LEN}/${METRIC}
 RESULT_JSON=${RESULT_DIR}/result.json
@@ -90,7 +90,7 @@ mkdir -p "${RESULT_DIR}" "${PCM_DIR}"
 AMDuProfPcm profile \
   -m ipc,l3,dc,l2,memory \
   -a -I 300 -s \
-  -d 500 \
+  --start-delay 300000 -d 480 \
   -O "${PCM_DIR}" \
   -- env \
     LD_LIBRARY_PATH="${LD_LIBRARY_PATH}" \
@@ -111,7 +111,7 @@ AMDuProfPcm profile \
       --input-len ${INPUT_LEN} \
       --output-len ${OUTPUT_LEN} \
       --num-iters-warmup 1 \
-      --num-rounds 2 \
+      --num-rounds 300 \
       --disable-detokenize \
       --output-json ${RESULT_JSON}
 ```

@@ -1,3 +1,78 @@
+2026-04-02 16:15:21 +0800
+- `tools/p2_attn_only/plot_pcm_summary.py` 的 `l3_latency_breakdown` 已从 `stackplot` 改成堆叠柱状图。
+- 当前语义是“每个 `q_len/kv_len` case 画一根柱”，x 轴 tick 直接标真实长度值；因此 [decode_l3_latency_breakdown_vs_kv_len.png](/home/zjj/vllm/test_results/P2_AttnOnly/Qwen3-30B-A3B/NPS1_TP2/plots/decode_l3_latency_breakdown_vs_kv_len.png) 和 [prefill_l3_latency_breakdown_vs_q_len.png](/home/zjj/vllm/test_results/P2_AttnOnly/Qwen3-30B-A3B/NPS1_TP2/plots/prefill_l3_latency_breakdown_vs_q_len.png) 现在都是按 case 数量绘制的堆叠柱状图。
+
+2026-04-02 16:02:01 +0800
+- `P2` attention-only PCM 结果已补通用整理/出图脚本：
+  - 解析脚本：`tools/p2_attn_only/pcm_summary.py`
+  - 出图脚本：`tools/p2_attn_only/plot_pcm_summary.py`
+  - 单测：`tests/tools/test_p2_attn_only_pcm.py`
+- 当前已对 `test_results/P2_AttnOnly/Qwen3-30B-A3B/NPS1_TP2` 实跑完成，产物位置：
+  - `summary.csv`
+  - `ccx_summary.csv`
+  - `summary.md`
+  - `plots/decode_l3_miss_vs_kv_len.png`
+  - `plots/decode_l3_latency_vs_kv_len.png`
+  - `plots/decode_l3_latency_breakdown_vs_kv_len.png`
+  - `plots/prefill_l3_miss_vs_q_len.png`
+  - `plots/prefill_l3_latency_vs_q_len.png`
+  - `plots/prefill_l3_latency_breakdown_vs_q_len.png`
+- 当前解析口径：
+  - `summary.csv` 只取 `report.json` 里 `group=[{'l3': [{'id': -1, 'name': 'system'}]}]` 的 system 级 `aggregated.average`
+  - `ccx_summary.csv` 额外保留 `ccx_id=0..15` 的同名指标，便于后续查局部不均衡
+  - 若同一 case 目录下存在多个 `pcm_l3_dc/*/report.json`，脚本按 `report.json` 文件修改时间取最新 session
+- 复用命令：
+  - `python tools/p2_attn_only/pcm_summary.py --result-root test_results/P2_AttnOnly/Qwen3-30B-A3B/<EXP_TAG>`
+  - `python tools/p2_attn_only/plot_pcm_summary.py --summary-csv test_results/P2_AttnOnly/Qwen3-30B-A3B/<EXP_TAG>/summary.csv`
+
+2026-04-02 15:08:56 +0800
+- `P2` attention-only 脚本与实验文档接口已完全收敛为 `q_len/kv_len`，不再使用 `input_len/output_len`。
+- 当前外部接口与结果路径口径：
+  - CLI / helper 一律传 `--q-len/--kv-len`
+  - 结果目录与 summary 一律写成 `batch_<B>/q<q_len>_KV_<kv_len>`
+  - `decode-like` / `prefill-like` 只保留 workload 语义和默认值，不再承担 `input/output` 到 `q/KV` 的映射层
+- 对应实现：
+  - 脚本源码：`benchmarks/kernels/cpu/benchmark_cpu_attn_mp.py`
+  - 测试文件：`tests/benchmarks/test_cpu_attn_mp.py`
+  - 文档 helper：`info/experiment_ops/Qwen3-30B-A3B_attention-only_TP实验步骤.md`
+
+2026-04-02 13:10:48 +0800
+- `P2` 文档中的 PCM helper 已进一步修订：去掉 `guard_s`，改为显式传 `pcm_duration_s` 与 `benchmark_min_runtime_s`，并要求 `benchmark_min_runtime_s > pcm_duration_s`。
+- 口径原因：正式 PCM 的首要目标是让 profiler 在程序稳定运行窗口内采样，而不是让 `-d` 覆盖 benchmark 全程；`summary.json` 可由 dry-run 提供。
+- 可行性验证路径：`test_results/P2_AttnOnly/_validation/pcm_duration_shorter/AMDuProfPcm-Multi_Apr-02-2026_13-09-31/report.json`。
+  - 对应命令是 `--start-delay 1000 -d 5 -I 100 ... --min-runtime-s 8`。
+  - 实际 wall time 约 `7.78s`，说明在当前 launcher 口径下，benchmark 可以比 profiler 更长，profiler 仍会正常生成报告。
+- 当前文档里的推荐起步值已改成：`pcm_duration_s=120`、`benchmark_min_runtime_s=130`、`interval_ms=100`。
+
+2026-04-02 12:56:36 +0800
+- `benchmark_cpu_attn_mp.py` 已新增 `--min-runtime-s`，并与 `--iters` 做成互斥参数；`--iters` 路径保留逐轮 `times_ms`，`--min-runtime-s` 路径只保留聚合统计与 `measurement_iters`，避免 decode 长跑写出超大 JSON。
+- 触发这次修正的证据来自 `2026-04-02 01:10-01:11` 那批 `NPS1_TP2` 结果：`report.json` 明确记录实际 profiler 命令是 `--start-delay 5000 -d 20`，且 `SAMPLE_INTERVAL (ms)=1000`，不符合文档原先宣称的 `10000/120s` 口径。对应路径：
+  - `test_results/P2_AttnOnly/Qwen3-30B-A3B/NPS1_TP2/decode-like/global-fixed/pcm_l3_dc/AMDuProfPcm-Multi_Apr-02-2026_01-10-42/report.json`
+  - `test_results/P2_AttnOnly/Qwen3-30B-A3B/NPS1_TP2/prefill-like/global-fixed/pcm_l3_dc/AMDuProfPcm-Multi_Apr-02-2026_01-11-36/report.json`
+- `info/experiment_ops/Qwen3-30B-A3B_attention-only_TP实验步骤.md` 已改为正式 PCM 统一使用 `--min-runtime-s`，并在 helper 中显式传 `-I`，同时让 `duration_s` 按 `start-delay + min-runtime + guard` 自动计算。
+- 旧结果摘要 `test_results/P2_AttnOnly/Qwen3-30B-A3B/NPS1_TP2/2026-04-02_01-11-58_nps1_tp2_attention_only_global_fixed_summary.md` 已降级为“短 session smoke test”，不能再当正式 locality 比较结论。
+- 验证证据：
+  - 真实小运行：`test_results/P2_AttnOnly/_validation/min_runtime_decode_tp2.json`，证明 `--min-runtime-s` 路径会自然退出并落盘聚合统计。
+  - 短 PCM smoke：`test_results/P2_AttnOnly/_validation/pcm_min_runtime_smoke/AMDuProfPcm-Multi_Apr-02-2026_12-55-02/report.json`，证明 profiler 已记录 `SAMPLE_INTERVAL (ms)=100` 和 `--min-runtime-s 1`。
+  - 带足够 guard 的 PCM 验证：`test_results/P2_AttnOnly/_validation/pcm_min_runtime_guard/summary.json` 与其同目录 `report.json` 同时生成，说明新版 helper 思路可同时拿到 benchmark 汇总与 profiler 报告。
+
+2026-04-02 09:15:24 +0800
+- 已完成 `P2` 的 `NPS1_TP2` `global-fixed` 首轮 `decode-like/prefill-like` 批次，结果根目录：`test_results/P2_AttnOnly/Qwen3-30B-A3B/NPS1_TP2`。
+- 本轮结果摘要：`test_results/P2_AttnOnly/Qwen3-30B-A3B/NPS1_TP2/2026-04-02_01-11-58_nps1_tp2_attention_only_global_fixed_summary.md`。
+- 运行时拓扑证据显示当前环境只暴露 `2` 个 NUMA node；`dry_run_summary.json` 里 `rank0 omp_cpuids=256-382`、`rank1 omp_cpuids=384-510`，结合 `lscpu_topology.json` 可对应到 `node0/node1`，说明脚本已按真实 worker 逻辑跨 node 绑 rank。
+- `AMDuProfPcm` 正常生成了 `report.json / report-cumulative.csv / report.html`，但 benchmark 自身的 `summary.json` 没有落盘；后续整理结果时应优先使用 `dry_run_summary.json + report.json`。
+- 任务 `10` 仍保持 `pending`：当前只完成了 `NPS1_TP2`，还缺 `NPS2_TP4 / NPS4_TP8`，也还没有做 `global-fixed` 与 `per-rank-fixed` 的正式对照分析。
+
+2026-04-02 00:51:20 +0800
+- `P2` 的脚本实现已经落地，但原 `tasks.json` 里的任务 `10` 仍不应标记完成；当前只完成了“试验台实现”，尚未完成 `AMDuProfPcm` 实验与 locality 结论。
+- 新脚本入口：`benchmarks/kernels/cpu/benchmark_cpu_attn_mp.py`。
+- 单进程 attention runner 已从 `benchmarks/kernels/cpu/benchmark_cpu_attn.py` 抽成可复用函数：`prepare_attention_run()`、`run_attention_iters()`、`benchmark_attention()`。
+- 真实 TP worker 的绑核逻辑已抽到 `vllm/v1/worker/cpu_binding.py`，并被 `vllm/v1/worker/cpu_worker.py` 与新 benchmark 脚本共用；关键复用口径仍绑定 `CPUWorker.init_device()` 与 `csrc/cpu/utils.cpp::init_cpu_threads_env()`。
+- 口径注意：
+  - 该脚本运行时只能识别当前 `CPU/CORE/NODE` 可见拓扑，也就是 NUMA node 列表；不能直接“识别 NPS”。`NPS1_TP2 / NPS2_TP4 / NPS4_TP8` 应作为实验批次标签，由外部实验环境保证。
+  - 脚本同时支持 `global-fixed` 与 `per-rank-fixed` 两种 head 切分口径，后续写结论时必须把“locality 改善”和“per-rank 工作量变小”分开解释。
+- 当前本地 Codex 环境缺少 `torch` 与 `pytest`，因此本轮只能做 `py_compile` 级静态验证；后续若要正式跑脚本或单测，应切到有 CPU vLLM 运行依赖的环境。
+
 2026-04-01 16:38:00 +0800
 - `Qwen3-30B-A3B` 在 `NPS1_TP2` 下相对 `2026-03-11 20:33:50 +0800` 历史结果的性能回退，当前最强证据指向“本地 Debug 构建 + 新负载形态叠加”，不应再直接与旧批次横向比较。
 - 复现实验：
@@ -60,3 +135,15 @@
   - steady-state 校准时，优先减少 `--num-rounds` 让 `strict-batch` 自然结束，`-d` 只作为上界。
   - 若 `report-timeseries.csv` / `report-cumulative.csv` 已生成但命令不退，先对残留 `AMDuProfPcm` 发 `SIGTERM` 或 `SIGINT`，等待补齐 `session.uprof` / `report.html`；不要先 `kill -9`。
   - 仅当温和收尾后仍缺 `session.uprof` 时，才把该 session 视为“只能用 csv、无法再补 html”的残缺结果。
+2026-04-02 17:19:41 +0800
+- 新增 `info/experiment_ops/Qwen3-30B-A3B_IBS来源延迟采样实验步骤.md`，用途是给 `another CCX cache` 与 `local memory` 的来源级平均访问延迟做 `AMDuProfCLI IBS OP` 采样与结果解释。
+- 当前口径固定要求 `collect` 时带 `-e event=ibs-op,ibsop-l3miss=1,call-graph`；文档中的来源平均延迟公式都建立在“样本已限制为 L3 miss”这个前提上。
+- 证据路径已写进文档：`AMDuProf_Collect_Help.txt`、`ibs_op_ld.json`、`ibs_op_ld_lat.json`、`0x1a_0x1.xml`。若后续升级 `AMDuProf` 版本，先复核这些定义是否变化，再复用同一公式。
+2026-04-02 19:03:07 +0800
+- `info/进展.md` 已补入 `P2/NPS1_TP2` 的阶段性判断：当前只支持把“按共享 K/V 工作集做拓扑感知放置”当作 `prefill` 的候选方向，不能写成已经被当前数据证明可稳定实现。
+- 当前覆盖边界已明确写回：只有 `NPS1_TP2 + global-fixed + batch=16`；`prefill-like` 覆盖 `q=kv=128/256/512/1024/2048`，`decode-like` 覆盖 `q=1, kv=256/512/1024/2048`。
+- 后续优先级也已写回 `进展.md`：
+  - 先补 `NPS2_TP4 / NPS4_TP8` 的 `global-fixed`
+  - 再补 `per-rank-fixed`
+  - 再在 `prefill q=512->1024`、`decode kv=1024->2048` 之间补更密的长度点
+  - 若要写服务侧结论，再补低/高 batch 对照

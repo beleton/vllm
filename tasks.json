@@ -1,6 +1,6 @@
 {
     "project": "Chiplet CPU推理加速",
-    "updated_at": "2026-04-01 22:41:30 +0800",
+    "updated_at": "2026-04-02 23:15:37 +0800",
     "tasks": [
         {
             "id": "0",
@@ -64,7 +64,7 @@
         },
         {
             "id": "10",
-            "description": "建立可复用真实 `block_table/slot_mapping/query_start_loc/seq_lens` 的 attention 局部性试验台，验证 `kv_head` 局部性假设",
+            "description": "编写复用真实 TP worker NUMA/OMP 绑定的 attention-only 多进程试验脚本，用 `AMDuProfPcm` 比较 `NPS1_TP2/NPS2_TP4/NPS4_TP8` 下的 L3 行为与性能，判断 attention kernel 的 locality 优化空间",
             "status": "pending",
             "passes": false
         },
@@ -209,6 +209,90 @@
         {
             "id": "34",
             "description": "基于 `test_results/PD_Test/Qwen3-30B-A3B/CLI_res/2026-04-01_qwen3-30b-a3b_p0_cli_results.md` 分析 `Qwen3-30B-A3B P0` 的函数级归因结果，给出 `decode/prefill` 差异与后续实验建议",
+            "status": "completed",
+            "passes": true
+        },
+        {
+            "id": "35",
+            "description": "实现 `attention-only` 多进程 TP benchmark 脚本，复用 `CPUWorker.init_device()` 的 NUMA/OMP 绑核逻辑，支持 `global-fixed/per-rank-fixed` 两套 head 切分口径，并保留 `decode-like/prefill-like` 统一输入路径",
+            "status": "completed",
+            "passes": true
+        },
+        {
+            "id": "36",
+            "description": "为 `benchmark_cpu_attn_mp.py` 补 `P2` 实验文档，说明脚本用法、当前 NUMA/NPS 口径边界，并给出可直接复制执行的 `AMDuProfPcm` 下一步实验命令",
+            "status": "completed",
+            "passes": true
+        },
+        {
+            "id": "37",
+            "description": "补跑 `P2` 的 `NPS1_TP2` `attention-only` `global-fixed` 首轮 `decode-like/prefill-like` 实验，并将 `AMDuProfPcm` 结果整理到 `test_results/P2_AttnOnly/Qwen3-30B-A3B/NPS1_TP2`",
+            "status": "completed",
+            "passes": true
+        },
+        {
+            "id": "38",
+            "description": "修正 `benchmark_cpu_attn_mp.py` 的 PCM 运行口径：新增 `--min-runtime-s` 并与 `--iters` 互斥，避免长 steady-state 采样依赖手工估算迭代数；同步修订 `P2` 实验文档与短 session 结果说明",
+            "status": "completed",
+            "passes": true
+        },
+        {
+            "id": "39",
+            "description": "修订 `P2` 实验文档中的 PCM helper 语义：去掉 `guard_s`，改为显式区分 `pcm_duration_s` 与 `benchmark_min_runtime_s`，并验证 `benchmark_min_runtime_s > pcm_duration_s` 的 launcher 口径可行",
+            "status": "completed",
+            "passes": true
+        },
+        {
+            "id": "40",
+            "description": "为 `benchmark_cpu_attn_mp.py` 增加 `--input-len/--output-len` 参数，补齐与 `B/I/O` 实验口径对齐的长度映射，并更新 `P2` 实验文档与测试",
+            "status": "completed",
+            "passes": true
+        },
+        {
+            "id": "41",
+            "description": "把 `P2` attention-only 结果目录规范收敛为显式包含 `batch_size` 与解析后的 `q_len/kv_len`，并让脚本 summary 返回对应的 `result_shape_dirname` 供外部 wrapper 复用",
+            "status": "completed",
+            "passes": true
+        },
+        {
+            "id": "42",
+            "description": "将 `P2` attention-only 脚本、helper、结果目录和文档接口统一收敛为 `q_len/kv_len`，移除 `input_len/output_len` 这层命名与参数",
+            "status": "completed",
+            "passes": true
+        },
+        {
+            "id": "43",
+            "description": "为 `P2_AttnOnly/Qwen3-30B-A3B/NPS1_TP2` 编写通用 PCM 结果整理与出图脚本，统一提取 `L3 Access/Miss/Latency` 及 miss latency 组成指标，导出汇总表与图像",
+            "status": "completed",
+            "passes": true
+        },
+        {
+            "id": "44",
+            "description": "将 `P2` 通用出图脚本中的 `l3_latency_breakdown` 从面积图改为按每个 `q_len/kv_len` case 绘制的堆叠柱状图",
+            "status": "completed",
+            "passes": true
+        },
+        {
+            "id": "45",
+            "description": "编写 `AMDuProfCLI IBS` 来源延迟采样文档，给出 `another CCX cache` 与 `local memory` 平均访问延迟的采样命令、结果查看方式与计算公式",
+            "status": "completed",
+            "passes": true
+        },
+        {
+            "id": "46",
+            "description": "阅读 `info/papers/ARCAS.pdf` 与 `info/papers/Optimizing Sorting for Chiplet-Based CPUs.pdf`，核对两文是否都认为跨 CCD 的 L3 访问比本地 DRAM 更快",
+            "status": "completed",
+            "passes": true
+        },
+        {
+            "id": "47",
+            "description": "把 `P2/NPS1_TP2` 的阶段性判断和后续实验优先级补回 `info/进展.md`，明确当前覆盖边界与仍需补跑的配置",
+            "status": "completed",
+            "passes": true
+        },
+        {
+            "id": "48",
+            "description": "基于 `info/进展.md` 的观察 5 和 `GPU_Attention_NUMA_Optimization.pdf`，阅读现有 CPU attention kernel 与实验结果，梳理不写代码的拓扑感知优化实现思路",
             "status": "completed",
             "passes": true
         }

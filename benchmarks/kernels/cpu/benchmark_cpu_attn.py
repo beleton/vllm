@@ -3,6 +3,7 @@
 
 import functools
 import time
+from dataclasses import dataclass
 
 import numpy as np
 import torch
@@ -43,8 +44,32 @@ def tensor_cache(
     return tensor
 
 
-@torch.inference_mode()
-def main(
+@dataclass
+class AttentionBenchmarkResult:
+    times_ms: list[float]
+    time_min_ms: float
+    time_max_ms: float
+    time_mean_ms: float
+    time_std_ms: float
+    time_median_ms: float
+
+
+@dataclass
+class PreparedAttentionRun:
+    query: torch.Tensor
+    packed_key_cache: torch.Tensor
+    packed_value_cache: torch.Tensor
+    output: torch.Tensor
+    query_start_loc: torch.Tensor
+    seq_lens: torch.Tensor
+    scale: float
+    window_size: tuple[int, int]
+    block_table: torch.Tensor
+    scheduler_metadata: torch.Tensor
+    s_aux: torch.Tensor | None
+
+
+def prepare_attention_run(
     seq_lens: list[tuple[int, int]],
     num_heads: tuple[int, int],
     head_size: int,
@@ -56,8 +81,7 @@ def main(
     enable_kv_split: bool = False,
     isa: str | None = None,
     seed: int = 0,
-    iters: int = 20,
-) -> None:
+) -> PreparedAttentionRun:
     current_platform.seed_everything(seed)
     num_seqs = len(seq_lens)
     query_lens = [x[0] for x in seq_lens]
@@ -100,7 +124,6 @@ def main(
     )
     key_cache, value_cache = key_value.unbind(0)
 
-    # KV cache for CPU attention
     packed_key_cache = torch.empty(
         num_blocks, num_kv_heads, block_size, head_size, dtype=dtype
     )
@@ -115,7 +138,6 @@ def main(
         0, num_blocks, (num_seqs, max_num_blocks_per_seq), dtype=torch.int32
     )
 
-    # use reshape_and_cache to pack key_cache and value_cache
     slot_mapping = torch.arange(0, num_blocks * block_size, dtype=torch.int64)
     cpu_attn_reshape_and_cache(
         key=key_cache.view(-1, num_kv_heads, head_size),
@@ -140,47 +162,126 @@ def main(
         enable_kv_split=enable_kv_split,
     )
 
-    out_with_split = torch.empty_like(query)
+    return PreparedAttentionRun(
+        query=query,
+        packed_key_cache=packed_key_cache,
+        packed_value_cache=packed_value_cache,
+        output=torch.empty_like(query),
+        query_start_loc=cu_query_lens,
+        seq_lens=kv_lens_tensor,
+        scale=scale,
+        window_size=window_size,
+        block_table=block_tables,
+        scheduler_metadata=metadata,
+        s_aux=s_aux,
+    )
 
-    def run_benchmark(iters: int) -> list[float]:
-        times = []
-        for _ in range(iters):
-            start_time = time.perf_counter_ns()
-            cpu_attention_with_kv_cache(
-                query=query,
-                key_cache=packed_key_cache,
-                value_cache=packed_value_cache,
-                output=out_with_split,
-                query_start_loc=cu_query_lens,
-                seq_lens=kv_lens_tensor,
-                scale=scale,
-                causal=True,
-                alibi_slopes=None,
-                sliding_window=window_size,
-                block_table=block_tables,
-                softcap=0,
-                scheduler_metadata=metadata,
-                s_aux=s_aux,
-            )
-            end_time = time.perf_counter_ns()
-            times.append((end_time - start_time) / 1e6)
-        return times
 
-    # warmup
-    run_benchmark(5)
-    # benchmark
-    times = run_benchmark(iters)
+def run_attention_iters(
+    prepared: PreparedAttentionRun,
+    iters: int,
+) -> list[float]:
+    times = []
+    for _ in range(iters):
+        start_time = time.perf_counter_ns()
+        cpu_attention_with_kv_cache(
+            query=prepared.query,
+            key_cache=prepared.packed_key_cache,
+            value_cache=prepared.packed_value_cache,
+            output=prepared.output,
+            query_start_loc=prepared.query_start_loc,
+            seq_lens=prepared.seq_lens,
+            scale=prepared.scale,
+            causal=True,
+            alibi_slopes=None,
+            sliding_window=prepared.window_size,
+            block_table=prepared.block_table,
+            softcap=0,
+            scheduler_metadata=prepared.scheduler_metadata,
+            s_aux=prepared.s_aux,
+        )
+        end_time = time.perf_counter_ns()
+        times.append((end_time - start_time) / 1e6)
+    return times
 
-    time_min = min(times)
-    time_max = max(times)
-    time_mean = np.mean(times)
-    time_std = np.std(times)
 
-    print("\tmin (ms) = ", time_min)
-    print("\tmax (ms) = ", time_max)
-    print("\tmean (ms) = ", time_mean)
-    print("\tstd = ", time_std)
-    print("\tmedian (ms) = ", np.median(times))
+def benchmark_attention(
+    seq_lens: list[tuple[int, int]],
+    num_heads: tuple[int, int],
+    head_size: int,
+    sliding_window: int = None,
+    dtype: torch.dtype = torch.bfloat16,
+    block_size: int = 128,
+    num_blocks: int = 4096,
+    use_sink: bool = False,
+    enable_kv_split: bool = False,
+    isa: str | None = None,
+    seed: int = 0,
+    iters: int = 20,
+    warmup_iters: int = 5,
+) -> AttentionBenchmarkResult:
+    prepared = prepare_attention_run(
+        seq_lens=seq_lens,
+        num_heads=num_heads,
+        head_size=head_size,
+        sliding_window=sliding_window,
+        dtype=dtype,
+        block_size=block_size,
+        num_blocks=num_blocks,
+        use_sink=use_sink,
+        enable_kv_split=enable_kv_split,
+        isa=isa,
+        seed=seed,
+    )
+
+    run_attention_iters(prepared, warmup_iters)
+    times = run_attention_iters(prepared, iters)
+
+    return AttentionBenchmarkResult(
+        times_ms=times,
+        time_min_ms=min(times),
+        time_max_ms=max(times),
+        time_mean_ms=float(np.mean(times)),
+        time_std_ms=float(np.std(times)),
+        time_median_ms=float(np.median(times)),
+    )
+
+
+@torch.inference_mode()
+def main(
+    seq_lens: list[tuple[int, int]],
+    num_heads: tuple[int, int],
+    head_size: int,
+    sliding_window: int = None,
+    dtype: torch.dtype = torch.bfloat16,
+    block_size: int = 128,
+    num_blocks: int = 4096,
+    use_sink: bool = False,
+    enable_kv_split: bool = False,
+    isa: str | None = None,
+    seed: int = 0,
+    iters: int = 20,
+) -> None:
+    result = benchmark_attention(
+        seq_lens=seq_lens,
+        num_heads=num_heads,
+        head_size=head_size,
+        sliding_window=sliding_window,
+        dtype=dtype,
+        block_size=block_size,
+        num_blocks=num_blocks,
+        use_sink=use_sink,
+        enable_kv_split=enable_kv_split,
+        isa=isa,
+        seed=seed,
+        iters=iters,
+    )
+
+    print("\tmin (ms) = ", result.time_min_ms)
+    print("\tmax (ms) = ", result.time_max_ms)
+    print("\tmean (ms) = ", result.time_mean_ms)
+    print("\tstd = ", result.time_std_ms)
+    print("\tmedian (ms) = ", result.time_median_ms)
 
 
 def generate_seq_lens(
