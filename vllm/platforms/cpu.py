@@ -39,11 +39,19 @@ def get_max_threads(pid=0):
         raise NotImplementedError("Unsupported OS")
 
 
+def supports_amx_tiles() -> bool:
+    cpu_extension = getattr(torch._C, "_cpu", None)
+    probe = getattr(cpu_extension, "_is_amx_tile_supported", None)
+    return bool(probe()) if callable(probe) else False
+
+
 @dataclass
 class LogicalCPUInfo:
     id: int = -1
     physical_core: int = -1
     numa_node: int = -1
+    socket_id: int = -1
+    l3_cache_id: int = -1
 
     @classmethod
     def _int(cls, value: str) -> int:
@@ -53,17 +61,27 @@ class LogicalCPUInfo:
             int_value = -1
         return int_value
 
+    @classmethod
+    def _l3_cache_id(cls, value: str | None) -> int:
+        if value is None:
+            return -1
+        return cls._int(str(value).split(":")[-1])
+
     @staticmethod
     def json_decoder(obj_dict: dict):
         id = obj_dict.get("cpu")
         physical_core = obj_dict.get("core")
         numa_node = obj_dict.get("node")
+        socket_id = obj_dict.get("socket")
+        l3_cache = obj_dict.get("l1d:l1i:l2:l3", obj_dict.get("cache"))
 
         if not (id is None or physical_core is None or numa_node is None):
             return LogicalCPUInfo(
                 id=LogicalCPUInfo._int(id),
                 physical_core=LogicalCPUInfo._int(physical_core),
                 numa_node=LogicalCPUInfo._int(numa_node),
+                socket_id=LogicalCPUInfo._int(socket_id),
+                l3_cache_id=LogicalCPUInfo._l3_cache_id(l3_cache),
             )
         else:
             return obj_dict
@@ -360,7 +378,7 @@ class CpuPlatform(Platform):
 
         # Init LogicalCPUInfo from lscpu
         lscpu_output = subprocess.check_output(
-            "lscpu -J -e=CPU,CORE,NODE", shell=True, text=True
+            "lscpu -J -e=CPU,CORE,NODE,SOCKET,CACHE", shell=True, text=True
         )
         lscpu_output = re.sub(r'"node":\s*-\s*(,|\n)', r'"node": 0\1', lscpu_output)
         logical_cpu_list: list[LogicalCPUInfo] = json.loads(

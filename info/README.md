@@ -1,10 +1,14 @@
 # info 索引
+- `2026-04-07_info文档库wiki化可行性评估.md`：对照 karpathy 的 `llm-wiki` 评估当前 `info/` 文档库能否在无 GUI 条件下演进为 wiki，并给出最小落地步骤
 - `Chiplet背景知识.md`：Chiplet、NUMA 与 L3 背景速览
 - `AMDuProf_context.md`：计数器与 PCM 指标速记
 - `ai-research/2026-03-31_AMD_Intel_Chiplet_LLM_AMX_L3研究.md`：AMD/Intel chiplet CPU、AMX 与 L3 感知数据放置研究笔记
 - `ai-research/相关工作/README.md`：chiplet/NUMA/分片缓存相关工作检索入口与交接约定
+- `ai-research/相关工作/2026-04-04_相关工作论文筛选与研究方向建议.md`：对相关工作中的论文做二次筛选，并结合当前课题给出高可行研究方向。
 - `experiment_ops/README.md`：experiment_ops 目录索引/实验入口
 - `vllm_analysis/README.md`：vllm_analysis 目录索引/性能与源码机制解释入口
+- `vllm_analysis/10_CPU_attention_acc_locality新kernel实现说明.md`：新增 `acc-local-l3` CPU attention kernel 的实现说明与核心代码阅读入口
+- `vllm_analysis/11_Qwen3-30B-A3B注意力KV工作集与32MiBL3容量估算.md`：估算 `Qwen3-30B-A3B` 在本机 `32 MiB` 本地 L3 下的 attention KV 工作集容量边界
 - `实验记录/实验总结_1.md`：实验记录/ 目录中的历史批次总结
 - `实验记录/2026-03-30_下一步研究计划.md`：基于 `info/进展.md` 整理的下一阶段研究方向与实验优先级
 - `实验记录/2026-03-31_chiplet架构下L3指标关注重点与高L3Miss归因边界.md`：整理 `L3` 关注指标、归因判据与优化边界

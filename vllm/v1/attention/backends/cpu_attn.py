@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
+import os
 from dataclasses import dataclass
 from typing import ClassVar
 
@@ -9,6 +10,7 @@ from vllm import _custom_ops as ops
 from vllm.config import VllmConfig
 from vllm.logger import init_logger
 from vllm.platforms import CpuArchEnum, current_platform
+from vllm.platforms.cpu import supports_amx_tiles
 from vllm.v1.attention.backend import (
     AttentionBackend,
     AttentionImpl,
@@ -26,6 +28,8 @@ from vllm.v1.kv_cache_interface import AttentionSpec, CrossAttentionSpec
 logger = init_logger(__name__)
 
 _CPU_ARCH_PREFER_MIXED_BATCH = (CpuArchEnum.X86, CpuArchEnum.ARM)
+_CPU_ATTN_LOCALITY_MODE_ENV = "VLLM_CPU_ATTN_LOCALITY_MODE"
+_CPU_ATTN_LOCALITY_MODES = {"balanced", "acc-local-l3"}
 
 
 class CPUAttentionBackend(AttentionBackend):
@@ -85,6 +89,7 @@ class CPUAttentionBackend(AttentionBackend):
 @dataclass
 class CPUAttentionMetadata:
     isa: str
+    locality_mode: str
     num_actual_tokens: int  # Number of tokens excluding padding.
     max_query_len: int
     query_start_loc: torch.Tensor
@@ -138,6 +143,7 @@ class CPUAttentionMetadataBuilder(AttentionMetadataBuilder[CPUAttentionMetadata]
             self.window_size = -1
         self.block_size = vllm_config.cache_config.block_size
         self.isa = _get_attn_isa(self.dtype, self.block_size, self.head_dim)
+        self.locality_mode = _resolve_cpu_attn_locality_mode()
         self.is_cross_attention = isinstance(kv_cache_spec, CrossAttentionSpec)
 
     def build(
@@ -174,7 +180,8 @@ class CPUAttentionMetadataBuilder(AttentionMetadataBuilder[CPUAttentionMetadata]
             query_start_loc = query_start_loc[: num_decodes + 1]
             block_table_tensor = block_table_tensor[:num_decodes]
 
-        sheduler_metadata = ops.cpu_attn_get_scheduler_metadata(
+        scheduler_op, _ = _get_cpu_attn_ops(self.locality_mode)
+        sheduler_metadata = scheduler_op(
             num_reqs=num_reqs,
             num_heads=self.num_heads,
             num_kv_heads=self.num_kv_heads,
@@ -190,6 +197,7 @@ class CPUAttentionMetadataBuilder(AttentionMetadataBuilder[CPUAttentionMetadata]
 
         attn_metadata = CPUAttentionMetadata(
             isa=self.isa,
+            locality_mode=self.locality_mode,
             num_actual_tokens=num_actual_tokens,
             max_query_len=max_query_len,
             query_start_loc=query_start_loc,
@@ -346,7 +354,8 @@ class CPUAttentionBackendImpl(AttentionImpl):
             num_actual_tokens = num_decode_tokens
 
         if num_actual_tokens > 0:
-            ops.cpu_attention_with_kv_cache(
+            _, attention_op = _get_cpu_attn_ops(attn_metadata.locality_mode)
+            attention_op(
                 query=query[:num_actual_tokens],
                 key_cache=key_cache,
                 value_cache=value_cache,
@@ -489,7 +498,7 @@ def _get_attn_isa(
 ) -> str:
     if head_size is not None and head_size % 32 != 0 and head_size % 16 == 0:
         return "vec16"
-    supports_amx = torch._C._cpu._is_amx_tile_supported()
+    supports_amx = supports_amx_tiles()
     if supports_amx and dtype in (torch.bfloat16,) and block_size % 32 == 0:
         return "amx"
     elif block_size % 32 == 0:
@@ -499,3 +508,28 @@ def _get_attn_isa(
             return "vec"
     else:
         return "vec16"
+
+
+def _resolve_cpu_attn_locality_mode(locality_mode: str | None = None) -> str:
+    mode = locality_mode or os.getenv(_CPU_ATTN_LOCALITY_MODE_ENV, "balanced")
+    normalized_mode = mode.strip().lower()
+    if normalized_mode in _CPU_ATTN_LOCALITY_MODES:
+        return normalized_mode
+    logger.warning_once(
+        "Unsupported %s=%s, fallback to balanced.",
+        _CPU_ATTN_LOCALITY_MODE_ENV,
+        mode,
+    )
+    return "balanced"
+
+
+def _get_cpu_attn_ops(
+    locality_mode: str | None = None,
+):
+    mode = _resolve_cpu_attn_locality_mode(locality_mode)
+    if mode == "acc-local-l3":
+        return (
+            ops.cpu_attn_get_scheduler_metadata_acc_locality,
+            ops.cpu_attention_with_kv_cache_acc_locality,
+        )
+    return (ops.cpu_attn_get_scheduler_metadata, ops.cpu_attention_with_kv_cache)

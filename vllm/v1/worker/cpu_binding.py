@@ -20,6 +20,25 @@ def _get_cpu_selector(
     return None
 
 
+def group_logical_cpus_by_l3(
+    logical_cpu_list: list[LogicalCPUInfo],
+) -> dict[tuple[int, int, int], list[LogicalCPUInfo]]:
+    groups: dict[tuple[int, int, int], list[LogicalCPUInfo]] = {}
+    sorted_cpu_list = sorted(
+        logical_cpu_list,
+        key=lambda cpu: (
+            cpu.numa_node,
+            cpu.socket_id,
+            cpu.l3_cache_id,
+            cpu.id,
+        ),
+    )
+    for cpu_info in sorted_cpu_list:
+        group_key = (cpu_info.numa_node, cpu_info.socket_id, cpu_info.l3_cache_id)
+        groups.setdefault(group_key, []).append(cpu_info)
+    return groups
+
+
 def get_auto_local_omp_cpuid(
     local_rank: int,
     world_size: int,

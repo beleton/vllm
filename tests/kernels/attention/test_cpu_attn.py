@@ -2,23 +2,286 @@
 # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
 
 import functools
+import json
 import math
 
 import pytest
 import torch
 
+import vllm._custom_ops as ops_module
 from vllm.platforms import CpuArchEnum, current_platform
+from vllm.platforms.cpu import CpuPlatform, supports_amx_tiles
 from vllm.utils.torch_utils import set_random_seed
-from vllm.v1.attention.backends.cpu_attn import _get_attn_isa
+from vllm.v1.attention.backends.cpu_attn import _get_attn_isa, _get_cpu_attn_ops
+from vllm.v1.worker.cpu_binding import group_logical_cpus_by_l3
 
 if not current_platform.is_cpu():
     pytest.skip("skipping CPU-only tests", allow_module_level=True)
 
 from vllm._custom_ops import (
     cpu_attention_with_kv_cache,
+    cpu_attention_with_kv_cache_acc_locality,
     cpu_attn_get_scheduler_metadata,
+    cpu_attn_get_scheduler_metadata_acc_locality,
     cpu_attn_reshape_and_cache,
 )
+
+
+def test_cpu_attention_acc_locality_wrappers_are_exported_without_replacing_legacy_ops():
+    assert callable(cpu_attention_with_kv_cache)
+    assert callable(cpu_attn_get_scheduler_metadata)
+    assert hasattr(ops_module, "cpu_attention_with_kv_cache_acc_locality")
+    assert hasattr(ops_module, "cpu_attn_get_scheduler_metadata_acc_locality")
+
+
+def test_cpu_attention_backend_defaults_to_legacy_wrappers(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.delenv("VLLM_CPU_ATTN_LOCALITY_MODE", raising=False)
+
+    scheduler_op, attn_op = _get_cpu_attn_ops()
+
+    assert scheduler_op is ops_module.cpu_attn_get_scheduler_metadata
+    assert attn_op is ops_module.cpu_attention_with_kv_cache
+
+
+def test_cpu_attention_backend_can_switch_to_acc_locality_wrappers(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    monkeypatch.setenv("VLLM_CPU_ATTN_LOCALITY_MODE", "acc-local-l3")
+
+    scheduler_op, attn_op = _get_cpu_attn_ops()
+
+    assert scheduler_op is ops_module.cpu_attn_get_scheduler_metadata_acc_locality
+    assert attn_op is ops_module.cpu_attention_with_kv_cache_acc_locality
+
+
+def _select_two_runtime_l3_groups() -> tuple[str, int]:
+    _, logical_cpu_list = CpuPlatform.get_allowed_cpu_core_node_list()
+    grouped = group_logical_cpus_by_l3(logical_cpu_list)
+    if len(grouped) < 2:
+        pytest.skip("Current environment does not expose at least two L3 groups.")
+
+    selected_cpu_ids: list[int] = []
+    for cpus in list(grouped.values())[:2]:
+        selected_cpu_ids.append(cpus[0].id)
+    return ",".join(str(cpu_id) for cpu_id in selected_cpu_ids), len(selected_cpu_ids)
+
+
+def _select_runtime_cpu_ids(max_cpu_num: int = 2) -> str:
+    _, logical_cpu_list = CpuPlatform.get_allowed_cpu_core_node_list()
+    if not logical_cpu_list:
+        pytest.skip("Current environment does not expose CPU topology.")
+    selected_cpu_ids = [cpu.id for cpu in logical_cpu_list[:max_cpu_num]]
+    return ",".join(str(cpu_id) for cpu_id in selected_cpu_ids)
+
+
+def _prepare_small_cpu_attention_case(
+    isa: str = "vec",
+    dtype: torch.dtype = torch.float32,
+) -> dict[str, torch.Tensor | float | tuple[int, int]]:
+    seq_lens = [(32, 128)]
+    num_seqs = len(seq_lens)
+    query_lens = [x[0] for x in seq_lens]
+    kv_lens = [x[1] for x in seq_lens]
+    num_query_heads = 4
+    num_kv_heads = 2
+    head_size = 32
+    block_size = 32
+    num_blocks = 16
+    scale = head_size**-0.5
+    token_num = sum(query_lens)
+
+    query = torch.randn(token_num, num_query_heads, head_size, dtype=dtype)
+    key_value = torch.randn(
+        2, num_blocks, block_size, num_kv_heads, head_size, dtype=dtype
+    )
+    key_cache, value_cache = key_value.unbind(0)
+    packed_key_cache = torch.empty(
+        num_blocks, num_kv_heads, block_size, head_size, dtype=dtype
+    )
+    packed_value_cache = torch.empty_like(packed_key_cache)
+    slot_mapping = torch.arange(0, num_blocks * block_size, dtype=torch.int64)
+    cpu_attn_reshape_and_cache(
+        key=key_cache.view(-1, num_kv_heads, head_size),
+        value=value_cache.view(-1, num_kv_heads, head_size),
+        key_cache=packed_key_cache,
+        value_cache=packed_value_cache,
+        slot_mapping=slot_mapping,
+        isa=isa,
+    )
+
+    cu_query_lens = torch.tensor([0] + query_lens, dtype=torch.int32).cumsum(
+        dim=0, dtype=torch.int32
+    )
+    kv_lens_tensor = torch.tensor(kv_lens, dtype=torch.int32)
+    max_num_blocks_per_seq = max(kv_lens) // block_size
+    block_tables = torch.randint(
+        0, num_blocks, (num_seqs, max_num_blocks_per_seq), dtype=torch.int32
+    )
+
+    return {
+        "query": query,
+        "packed_key_cache": packed_key_cache,
+        "packed_value_cache": packed_value_cache,
+        "query_start_loc": cu_query_lens,
+        "seq_lens": kv_lens_tensor,
+        "block_tables": block_tables,
+        "scale": scale,
+        "window_size": (-1, -1),
+    }
+
+
+def test_cpu_attention_acc_locality_metadata_exposes_l3_subgroups():
+    omp_cpuids, thread_num = _select_two_runtime_l3_groups()
+    torch.ops._C_utils.init_cpu_threads_env(omp_cpuids)
+
+    case = _prepare_small_cpu_attention_case()
+    metadata = cpu_attn_get_scheduler_metadata_acc_locality(
+        num_reqs=1,
+        num_heads=4,
+        num_kv_heads=2,
+        head_dim=32,
+        seq_lens=case["seq_lens"],
+        dtype=torch.float32,
+        query_start_loc=case["query_start_loc"],
+        causal=True,
+        sliding_window_size=-1,
+        isa="vec",
+        enable_kv_split=True,
+    )
+
+    summary = json.loads(torch.ops._C_utils.inspect_cpu_attn_acc_locality_metadata(metadata))
+
+    assert summary["subgroup_num"] == 2
+    assert summary["thread_num"] == thread_num
+    assert summary["actual_kv_head_num"] == 2
+    assert summary["kv_head_to_subgroup"] == [0, 1]
+    assert summary["attention_task_num"] == 2
+    assert summary["legacy_effective_thread_num"] >= 1
+    assert summary["legacy_attention_task_num"] == (
+        summary["actual_kv_head_num"] * summary["legacy_effective_thread_num"]
+    )
+    assert summary["attention_task_num"] <= summary["legacy_attention_task_num"]
+
+
+def test_cpu_attention_acc_locality_path_matches_legacy_output_for_small_case():
+    omp_cpuids = _select_runtime_cpu_ids()
+    torch.ops._C_utils.init_cpu_threads_env(omp_cpuids)
+
+    case = _prepare_small_cpu_attention_case()
+    legacy_metadata = cpu_attn_get_scheduler_metadata(
+        num_reqs=1,
+        num_heads=4,
+        num_kv_heads=2,
+        head_dim=32,
+        seq_lens=case["seq_lens"],
+        dtype=torch.float32,
+        query_start_loc=case["query_start_loc"],
+        causal=True,
+        sliding_window_size=-1,
+        isa="vec",
+        enable_kv_split=True,
+    )
+    locality_metadata = cpu_attn_get_scheduler_metadata_acc_locality(
+        num_reqs=1,
+        num_heads=4,
+        num_kv_heads=2,
+        head_dim=32,
+        seq_lens=case["seq_lens"],
+        dtype=torch.float32,
+        query_start_loc=case["query_start_loc"],
+        causal=True,
+        sliding_window_size=-1,
+        isa="vec",
+        enable_kv_split=True,
+    )
+
+    legacy_output = torch.empty_like(case["query"])
+    locality_output = torch.empty_like(case["query"])
+    cpu_attention_with_kv_cache(
+        query=case["query"],
+        key_cache=case["packed_key_cache"],
+        value_cache=case["packed_value_cache"],
+        output=legacy_output,
+        query_start_loc=case["query_start_loc"],
+        seq_lens=case["seq_lens"],
+        scale=case["scale"],
+        causal=True,
+        alibi_slopes=None,
+        sliding_window=case["window_size"],
+        block_table=case["block_tables"],
+        softcap=0,
+        scheduler_metadata=legacy_metadata,
+        s_aux=None,
+    )
+    cpu_attention_with_kv_cache_acc_locality(
+        query=case["query"],
+        key_cache=case["packed_key_cache"],
+        value_cache=case["packed_value_cache"],
+        output=locality_output,
+        query_start_loc=case["query_start_loc"],
+        seq_lens=case["seq_lens"],
+        scale=case["scale"],
+        causal=True,
+        alibi_slopes=None,
+        sliding_window=case["window_size"],
+        block_table=case["block_tables"],
+        softcap=0,
+        scheduler_metadata=locality_metadata,
+        s_aux=None,
+    )
+
+    torch.testing.assert_close(locality_output, legacy_output, atol=1e-4, rtol=1e-4)
+
+
+def test_cpu_attention_acc_locality_runtime_log_exposes_task_partition(
+    monkeypatch: pytest.MonkeyPatch,
+    capfd: pytest.CaptureFixture[str],
+):
+    omp_cpuids, _ = _select_two_runtime_l3_groups()
+    torch.ops._C_utils.init_cpu_threads_env(omp_cpuids)
+    monkeypatch.setenv("VLLM_CPU_ATTN_ACC_LOCALITY_DEBUG", "1")
+
+    case = _prepare_small_cpu_attention_case()
+    metadata = cpu_attn_get_scheduler_metadata_acc_locality(
+        num_reqs=1,
+        num_heads=4,
+        num_kv_heads=2,
+        head_dim=32,
+        seq_lens=case["seq_lens"],
+        dtype=torch.float32,
+        query_start_loc=case["query_start_loc"],
+        causal=True,
+        sliding_window_size=-1,
+        isa="vec",
+        enable_kv_split=True,
+    )
+
+    output = torch.empty_like(case["query"])
+    capfd.readouterr()
+    cpu_attention_with_kv_cache_acc_locality(
+        query=case["query"],
+        key_cache=case["packed_key_cache"],
+        value_cache=case["packed_value_cache"],
+        output=output,
+        query_start_loc=case["query_start_loc"],
+        seq_lens=case["seq_lens"],
+        scale=case["scale"],
+        causal=True,
+        alibi_slopes=None,
+        sliding_window=case["window_size"],
+        block_table=case["block_tables"],
+        softcap=0,
+        scheduler_metadata=metadata,
+        s_aux=None,
+    )
+    captured = capfd.readouterr()
+
+    assert "CPU attention acc-locality runtime summary" in captured.out
+    assert "subgroup 0" in captured.out
+    assert "attention_task_num=" in captured.out
+    assert "legacy_attention_task_num=" in captured.out
+    assert "kv_heads=" in captured.out
+    assert "legacy_slots=" in captured.out
 
 NUM_HEADS = [
     (4, 4),
@@ -47,7 +310,7 @@ def get_attn_isa(
     else:
         if current_platform.get_cpu_architecture() == CpuArchEnum.ARM:
             return "neon"
-        elif torch._C._cpu._is_amx_tile_supported():
+        elif supports_amx_tiles():
             return "amx"
         else:
             return "vec"
@@ -399,9 +662,7 @@ def test_varlen_with_paged_kv_normal_vec(
 @pytest.mark.parametrize("use_alibi", [False])
 @pytest.mark.parametrize("use_sink", [False])
 @pytest.mark.parametrize("isa", ["amx"])
-@pytest.mark.skipif(
-    not torch._C._cpu._is_amx_tile_supported(), reason="no AMX support."
-)
+@pytest.mark.skipif(not supports_amx_tiles(), reason="no AMX support.")
 def test_varlen_with_paged_kv_normal_amx(
     seq_lens: list[tuple[int, int]],
     num_heads: tuple[int, int],

@@ -8,6 +8,7 @@ from tests.kernels.allclose_default import get_default_atol, get_default_rtol
 from vllm._custom_ops import cpu_fused_moe, cpu_prepack_moe_weight
 from vllm.model_executor.layers.fused_moe.cpu_fused_moe import _CPU_MOE_ACT_FN
 from vllm.platforms import current_platform
+from vllm.platforms.cpu import supports_amx_tiles
 from vllm.utils.torch_utils import set_random_seed
 
 if not current_platform.is_cpu():
@@ -21,7 +22,7 @@ INTERMEDIATE_DIM = [128, 2880]
 BATCH_SIZE = [1, 64, 256]
 ACT = ["silu", "swigluoai"]
 USE_BIAS = [True, False]
-ISA = ["amx", "vec"] if torch._C._cpu._is_amx_tile_supported() else ["vec"]
+ISA = ["amx", "vec"] if supports_amx_tiles() else ["vec"]
 DTYPE = [torch.bfloat16]
 
 

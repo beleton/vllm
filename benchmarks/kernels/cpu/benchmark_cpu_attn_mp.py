@@ -22,7 +22,10 @@ from vllm.platforms.cpu import CpuPlatform
 from vllm.utils.argparse_utils import FlexibleArgumentParser
 from vllm.utils.torch_utils import STR_DTYPE_TO_TORCH_DTYPE
 from vllm.v1.attention.backends.cpu_attn import CPUAttentionBackend
-from vllm.v1.worker.cpu_binding import resolve_local_omp_cpuid
+from vllm.v1.worker.cpu_binding import (
+    group_logical_cpus_by_l3,
+    resolve_local_omp_cpuid,
+)
 
 DEFAULT_RUNTIME_CHUNK_ITERS = 1000
 
@@ -137,6 +140,52 @@ def build_result_shape_dirname(
     return f"batch_{batch_size}/q{q_len}_KV_{kv_len}"
 
 
+def _expand_cpu_ids(omp_cpuids: str) -> list[int]:
+    cpu_ids: list[int] = []
+    for token in omp_cpuids.split(","):
+        token = token.strip()
+        if not token:
+            continue
+        if "-" in token:
+            start_str, end_str = token.split("-", maxsplit=1)
+            start = int(start_str)
+            end = int(end_str)
+            if end < start:
+                raise ValueError(f"Invalid cpu range: {token}")
+            cpu_ids.extend(range(start, end + 1))
+        else:
+            cpu_ids.append(int(token))
+    return cpu_ids
+
+
+def summarize_rank_locality_groups(
+    omp_cpuids: str,
+    logical_cpu_list,
+    prefer_runtime_summary: bool = False,
+) -> list[dict[str, Any]]:
+    if omp_cpuids == "nobind":
+        return []
+
+    describe_groups = getattr(torch.ops._C_utils, "describe_cpu_locality_groups", None)
+    if prefer_runtime_summary and callable(describe_groups):
+        return json.loads(describe_groups(omp_cpuids))
+
+    selected_cpu_ids = set(_expand_cpu_ids(omp_cpuids))
+    selected_cpus = [cpu for cpu in logical_cpu_list if cpu.id in selected_cpu_ids]
+    grouped_cpus = group_logical_cpus_by_l3(selected_cpus)
+
+    return [
+        {
+            "numa_node": numa_node,
+            "socket_id": socket_id,
+            "l3_cache_id": l3_cache_id,
+            "cpu_ids": [cpu.id for cpu in cpus],
+            "num_cpus": len(cpus),
+        }
+        for (numa_node, socket_id, l3_cache_id), cpus in grouped_cpus.items()
+    ]
+
+
 def _summarize_times(
     times: list[float],
     measurement_mode: str,
@@ -236,6 +285,11 @@ def _rank_worker(
             bind_message = torch.ops._C_utils.init_cpu_threads_env(omp_cpuids)
         else:
             bind_message = "nobind"
+        locality_groups = summarize_rank_locality_groups(
+            omp_cpuids=omp_cpuids,
+            logical_cpu_list=args_dict["logical_cpu_list"],
+            prefer_runtime_summary=True,
+        )
 
         shard_plan = resolve_head_shard_plan(
             num_query_heads=args_dict["num_query_heads"],
@@ -269,6 +323,7 @@ def _rank_worker(
             enable_kv_split=args_dict["enable_kv_split"],
             isa=isa,
             seed=args_dict["seed"] + rank,
+            locality_mode=args_dict["attn_locality_mode"],
         )
         if args_dict["warmup_iters"] > 0:
             run_attention_iters(prepared, args_dict["warmup_iters"])
@@ -288,6 +343,7 @@ def _rank_worker(
                 "pid": os.getpid(),
                 "omp_cpuids": omp_cpuids,
                 "bind_message": bind_message,
+                "locality_groups": locality_groups,
                 "head_plan": asdict(shard_plan),
                 "elapsed_ms": (end_time - start_time) / 1e6,
                 "result": result,
@@ -356,6 +412,8 @@ def run_multiprocess_benchmark(args) -> dict[str, Any]:
         "omp_threads_bind": args.omp_threads_bind,
         "reserve_cpu_num": args.reserve_cpu_num,
         "cpu_arch": args.cpu_arch,
+        "attn_locality_mode": args.attn_locality_mode,
+        "attn_locality_group_span": args.attn_locality_group_span,
         "allowed_numa_nodes": allowed_numa_nodes,
         "logical_cpu_list": logical_cpu_list,
     }
@@ -395,6 +453,8 @@ def run_multiprocess_benchmark(args) -> dict[str, Any]:
         "result_shape_dirname": result_shape_dirname,
         "seq_lens": seq_lens,
         "head_plan": asdict(shard_plan),
+        "attn_locality_mode": args.attn_locality_mode,
+        "attn_locality_group_span": args.attn_locality_group_span,
         "allowed_numa_nodes": allowed_numa_nodes,
         "rank_results": rank_results,
         "slowest_rank_mean_ms": slowest_rank_mean_ms,
@@ -432,6 +492,12 @@ def add_cli_args(parser: FlexibleArgumentParser) -> None:
     )
     parser.add_argument("--use-sink", action="store_true")
     parser.add_argument("--enable-kv-split", action="store_true")
+    parser.add_argument(
+        "--attn-locality-mode",
+        choices=["balanced", "acc-local-l3"],
+        default="balanced",
+    )
+    parser.add_argument("--attn-locality-group-span", type=int, default=1)
     parser.add_argument(
         "--isa", type=str, choices=["vec", "neon", "amx", "vec16"], default=None
     )

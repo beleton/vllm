@@ -9,6 +9,7 @@ from vllm.model_executor.layers.quantization.utils.quant_utils import (
     unpack_quantized_values_into_int32,
 )
 from vllm.platforms import current_platform
+from vllm.platforms.cpu import supports_amx_tiles
 from vllm.scalar_type import scalar_types
 
 from .MPLinearKernel import MPLinearKernel, MPLinearLayerConfig
@@ -119,7 +120,7 @@ class CPUWNA16LinearKernel(MPLinearKernel):
 
 
 def _get_isa_hint(dtype: torch.dtype) -> str:
-    supports_amx = torch._C._cpu._is_amx_tile_supported()
+    supports_amx = supports_amx_tiles()
     if supports_amx and dtype in (torch.bfloat16,):
         return "amx"
     else:

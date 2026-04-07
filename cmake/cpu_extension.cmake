@@ -370,6 +370,7 @@ set(VLLM_EXT_SRC
     "csrc/cpu/pos_encoding.cpp"
     "csrc/moe/dynamic_4bit_int_moe_cpu.cpp"
     "csrc/cpu/cpu_attn.cpp"
+    "csrc/cpu/cpu_attn_acc_locality.cpp"
     "csrc/cpu/torch_bindings.cpp")
 
 if (AVX512_FOUND AND NOT AVX512_DISABLED)

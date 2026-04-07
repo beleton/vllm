@@ -4,19 +4,23 @@
 import functools
 import time
 from dataclasses import dataclass
+from typing import Any, Callable
 
 import numpy as np
 import torch
 
 from vllm._custom_ops import (
-    cpu_attention_with_kv_cache,
-    cpu_attn_get_scheduler_metadata,
     cpu_attn_reshape_and_cache,
 )
 from vllm.platforms import CpuArchEnum, current_platform
+from vllm.platforms.cpu import supports_amx_tiles
 from vllm.utils.argparse_utils import FlexibleArgumentParser
 from vllm.utils.torch_utils import STR_DTYPE_TO_TORCH_DTYPE
-from vllm.v1.attention.backends.cpu_attn import CPUAttentionBackend, _get_attn_isa
+from vllm.v1.attention.backends.cpu_attn import (
+    CPUAttentionBackend,
+    _get_attn_isa,
+    _get_cpu_attn_ops,
+)
 
 
 def get_attn_isa(
@@ -28,7 +32,7 @@ def get_attn_isa(
     else:
         if current_platform.get_cpu_architecture() == CpuArchEnum.ARM:
             return "neon"
-        elif torch._C._cpu._is_amx_tile_supported():
+        elif supports_amx_tiles():
             return "amx"
         else:
             return "vec"
@@ -56,6 +60,7 @@ class AttentionBenchmarkResult:
 
 @dataclass
 class PreparedAttentionRun:
+    attention_op: Callable[..., Any]
     query: torch.Tensor
     packed_key_cache: torch.Tensor
     packed_value_cache: torch.Tensor
@@ -81,6 +86,7 @@ def prepare_attention_run(
     enable_kv_split: bool = False,
     isa: str | None = None,
     seed: int = 0,
+    locality_mode: str = "balanced",
 ) -> PreparedAttentionRun:
     current_platform.seed_everything(seed)
     num_seqs = len(seq_lens)
@@ -148,7 +154,8 @@ def prepare_attention_run(
         isa=isa,
     )
 
-    metadata = cpu_attn_get_scheduler_metadata(
+    scheduler_op, attention_op = _get_cpu_attn_ops(locality_mode)
+    metadata = scheduler_op(
         num_reqs=num_seqs,
         num_heads=num_query_heads,
         num_kv_heads=num_kv_heads,
@@ -163,6 +170,7 @@ def prepare_attention_run(
     )
 
     return PreparedAttentionRun(
+        attention_op=attention_op,
         query=query,
         packed_key_cache=packed_key_cache,
         packed_value_cache=packed_value_cache,
@@ -184,7 +192,7 @@ def run_attention_iters(
     times = []
     for _ in range(iters):
         start_time = time.perf_counter_ns()
-        cpu_attention_with_kv_cache(
+        prepared.attention_op(
             query=prepared.query,
             key_cache=prepared.packed_key_cache,
             value_cache=prepared.packed_value_cache,
@@ -219,6 +227,7 @@ def benchmark_attention(
     seed: int = 0,
     iters: int = 20,
     warmup_iters: int = 5,
+    locality_mode: str = "balanced",
 ) -> AttentionBenchmarkResult:
     prepared = prepare_attention_run(
         seq_lens=seq_lens,
@@ -232,6 +241,7 @@ def benchmark_attention(
         enable_kv_split=enable_kv_split,
         isa=isa,
         seed=seed,
+        locality_mode=locality_mode,
     )
 
     run_attention_iters(prepared, warmup_iters)
@@ -261,6 +271,7 @@ def main(
     isa: str | None = None,
     seed: int = 0,
     iters: int = 20,
+    locality_mode: str = "balanced",
 ) -> None:
     result = benchmark_attention(
         seq_lens=seq_lens,
@@ -275,6 +286,7 @@ def main(
         isa=isa,
         seed=seed,
         iters=iters,
+        locality_mode=locality_mode,
     )
 
     print("\tmin (ms) = ", result.time_min_ms)
@@ -340,6 +352,12 @@ if __name__ == "__main__":
     )
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--iters", type=int, default=20)
+    parser.add_argument(
+        "--attn-locality-mode",
+        choices=["balanced", "acc-local-l3"],
+        default="balanced",
+    )
+    parser.add_argument("--attn-locality-group-span", type=int, default=1)
 
     args = parser.parse_args()
     print(args)
@@ -370,4 +388,5 @@ if __name__ == "__main__":
         else get_attn_isa(args.block_size, STR_DTYPE_TO_TORCH_DTYPE[args.dtype]),
         seed=args.seed,
         iters=args.iters,
+        locality_mode=args.attn_locality_mode,
     )

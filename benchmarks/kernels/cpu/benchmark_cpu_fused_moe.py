@@ -8,6 +8,7 @@ import numpy as np
 import torch
 
 from vllm.platforms import current_platform
+from vllm.platforms.cpu import supports_amx_tiles
 from vllm.utils.argparse_utils import FlexibleArgumentParser
 
 # Check if CPU MoE operations are available
@@ -24,7 +25,7 @@ except (ImportError, AttributeError) as e:
     sys.exit(1)
 
 # ISA selection following test_cpu_fused_moe.py pattern
-ISA_CHOICES = ["amx", "vec"] if torch._C._cpu._is_amx_tile_supported() else ["vec"]
+ISA_CHOICES = ["amx", "vec"] if supports_amx_tiles() else ["vec"]
 
 
 @torch.inference_mode()

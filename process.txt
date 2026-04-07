@@ -1,3 +1,12 @@
+2026-04-07 14:37:51 +0800
+- 相关工作精读任务的输出目录已建立：`info/ai-research/相关工作/精读/`。任务 `59` 的产物是 `2026-04-07_ArcLight精读.md`。
+- 本机当前没有 `pdfinfo/pdftotext`，但系统 `python` 可直接用 `pypdf` 抽文本；本轮 `ArcLight` 采用该路径完成证据提取。后续任务 `60-66` 若继续精读本地 PDF，可复用：
+  `python - <<'PY'`
+  `from pypdf import PdfReader`
+  `reader = PdfReader('info/papers/<paper>.pdf')`
+  `print(reader.pages[0].extract_text())`
+  `PY`
+
 2026-04-02 16:15:21 +0800
 - `tools/p2_attn_only/plot_pcm_summary.py` 的 `l3_latency_breakdown` 已从 `stackplot` 改成堆叠柱状图。
 - 当前语义是“每个 `q_len/kv_len` case 画一根柱”，x 轴 tick 直接标真实长度值；因此 [decode_l3_latency_breakdown_vs_kv_len.png](/home/zjj/vllm/test_results/P2_AttnOnly/Qwen3-30B-A3B/NPS1_TP2/plots/decode_l3_latency_breakdown_vs_kv_len.png) 和 [prefill_l3_latency_breakdown_vs_q_len.png](/home/zjj/vllm/test_results/P2_AttnOnly/Qwen3-30B-A3B/NPS1_TP2/plots/prefill_l3_latency_breakdown_vs_q_len.png) 现在都是按 case 数量绘制的堆叠柱状图。
@@ -147,3 +156,36 @@
   - 再补 `per-rank-fixed`
   - 再在 `prefill q=512->1024`、`decode kv=1024->2048` 之间补更密的长度点
   - 若要写服务侧结论，再补低/高 batch 对照
+2026-04-03 15:02:27 +0800
+- 本地 `vllm-cpu` 环境里若不显式带 `PYTHONNOUSERSITE=1`，`python` 会优先加载 `~/.local/lib/python3.12/site-packages/torch`，导致 `_C` 扩展与 conda 环境不一致；已验证会触发构建/导入问题。后续在这个任务链里运行 `python setup.py build_ext --inplace`、`pytest`、或任何依赖 `torch.ops._C*` 的命令时，都应使用：
+  `source /opt/miniconda3/etc/profile.d/conda.sh && conda activate vllm-cpu && PYTHONNOUSERSITE=1 ...`
+- `csrc/cpu/utils.cpp/.hpp` 已新增基于 sysfs 的 locality 基础设施，`torch.ops._C_utils.describe_cpu_locality_groups(cpu_ids)` 现在能返回 `numa_node/socket_id/l3_cache_id/cpu_ids` 摘要；`benchmark_cpu_attn_mp.py` 的 rank locality summary 也已优先复用这条 C++ 口径。
+- 新 kernel `cpu_attn_acc_locality` 目前仍是占位实现；真正未完成的是把上述 thread locality cache 接进新的 metadata/runtime。继续做该方向时，优先看 `tasks.json` 的任务 `53` 与 `docs/superpowers/plans/2026-04-02-cpu-attention-acc-locality.md` 的 Task 4/5。
+2026-04-03 16:51:21 +0800
+- `cpu_attn_acc_locality` 新路径已从占位实现推进到首个可运行闭环：
+  - `csrc/cpu/cpu_attn_acc_locality_impl.hpp` 现在会构造新的 metadata header，并把 legacy `cpu_attention::AttentionMetadata` 作为嵌入 payload 保留下来；
+  - header 里新增 `subgroup_num / subgroup_thread_num / thread_to_group_id / thread_to_local_offset / kv_head_to_subgroup`，用于把 `kv_head` 绑定到 L3 子池；
+  - runtime 不再复用 legacy 的全局 atomic task 枚举，而是让每个线程只消费自己 subgroup 内对应的 legacy thread slots，并按 subgroup 过滤 reduction item。
+- 新增调试/测试可观测入口：`torch.ops._C_utils.inspect_cpu_attn_acc_locality_metadata(metadata)`，可直接看 `subgroup_num`、`legacy_effective_thread_num`、`kv_head_to_subgroup`、`attention_task_num`。
+- 到 `2026-04-03 16:50:17 +0800`，最小 smoke benchmark 已跑通：
+  - 命令：`python benchmarks/kernels/cpu/benchmark_cpu_attn_mp.py --tp-size 1 --workload decode-like --batch-size 1 --q-len 1 --kv-len 64 --iters 1 --attn-locality-mode acc-local-l3 --output-json /tmp/acc_locality_smoke.json`
+  - 结果里已写出 `attn_locality_mode=acc-local-l3`、`attn_locality_group_span=1` 和 `rank_results[0].locality_groups`；当前环境下 rank0 暴露出 8 个 L3 groups，每组 16 CPU。
+- 下一步若继续，不要先扩 heuristic；优先做任务 `54`，用 attention-only benchmark 真正比较 `balanced` vs `acc-local-l3` 的 latency/summary 输出，并决定这版 subgroup 映射是否值得继续扩展到 `group_span > 1`。
+2026-04-04 22:03:13 +0800
+- `acc-local-l3` 新 kernel 的实现说明文档已写入 `info/vllm_analysis/10_CPU_attention_acc_locality新kernel实现说明.md`，并已补到 `info/README.md` 与 `info/vllm_analysis/README.md`。
+- 文档覆盖范围：
+  - 为什么新增并行 kernel，而不是直接改 `cpu_attention_with_kv_cache`
+  - `ThreadLocalityManager`、`L3/CCX` 分组、metadata header 与 embedded legacy metadata 的关系
+  - runtime 如何把 `kv_head` 限制到 subgroup，并复用 subgroup 内的 legacy thread slots
+  - Python/backend/benchmark 的 mode 切换路径和当前 `group_span=1` 的边界
+- 任务 `54` 仍保持 `pending`；用户当前要求先停实验、先沉淀实现说明，因此后续若继续 benchmark，对照入口优先看该文档再回到 `benchmark_cpu_attn_mp.py`。
+2026-04-05 21:55:43 +0800
+- `info/experiment_ops/Qwen3-30B-A3B_attention-only_TP实验步骤.md` 已补 `acc-local-l3` 实验口径，结论是当前不需要修改 `benchmarks/kernels/cpu/benchmark_cpu_attn_mp.py`，也不需要新增脚本。
+- 文档里新增了 `run_attn_only_pcm_locality()` helper，专门在原 `run_attn_only_pcm` 口径上增加 `--attn-locality-mode` 与 `--attn-locality-group-span 1`，并把结果目录追加一层 `balanced/acc-local-l3`。
+- 当前推荐先跑 `NPS1_TP2 + global-fixed + prefill-like + batch=16 + q=kv=128/512` 的 `balanced` vs `acc-local-l3` 对照；这组命令已写进实验文档，可直接复制。
+2026-04-07 16:29:07 +0800
+- 已新增 `info/vllm_analysis/11_Qwen3-30B-A3B注意力KV工作集与32MiBL3容量估算.md`，用于把 `Qwen3-30B-A3B` 在本机 `32 MiB` 本地 L3 下的 KV 工作集理论容量和当前 `P2/NPS1_TP2` 实验转折区间放到同一口径下解释。
+- 当前文档结论边界：
+  - 理论容量只按“单层 attention 的 KV 大小”估算，不包含 Q tile、scratchpad、reduction buffer 等其他工作集
+  - 工程判断只绑定 `Qwen3-30B-A3B + 本机 32 MiB 本地 L3 slice + P2/NPS1_TP2/global-fixed/batch=16`
+  - 文档中把 `q/kv≈1024` 视为值得警惕的 L3 容量边界，依据是“理论估算 + `summary.md` 里 `same-node another CCX -> local memory` 的来源切换”共同支持，而不是单纯公式证明

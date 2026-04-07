@@ -1,6 +1,6 @@
 {
     "project": "Chiplet CPU推理加速",
-    "updated_at": "2026-04-02 23:15:37 +0800",
+    "updated_at": "2026-04-07 20:48:30 +0800",
     "tasks": [
         {
             "id": "0",
@@ -293,6 +293,174 @@
         {
             "id": "48",
             "description": "基于 `info/进展.md` 的观察 5 和 `GPU_Attention_NUMA_Optimization.pdf`，阅读现有 CPU attention kernel 与实验结果，梳理不写代码的拓扑感知优化实现思路",
+            "status": "completed",
+            "passes": true
+        },
+        {
+            "id": "49",
+            "description": "基于已确认的 CPU attention 拓扑感知优化路线，细化到具体源码模块与测试入口，写出可执行的实现计划文档",
+            "status": "completed",
+            "passes": true
+        },
+        {
+            "id": "50",
+            "description": "根据用户新增约束修订 CPU attention locality 计划：不直接修改原有 `cpu_attention_with_kv_cache` kernel，改为新增并行的新 kernel/op 路径实现",
+            "status": "completed",
+            "passes": true
+        },
+        {
+            "id": "51",
+            "description": "在 `vllm-cpu` 环境继续执行 CPU attention locality 计划，先补 Python 侧 `L3/CCX` 拓扑字段与分组 helper，并处理新 kernel 测试所需的环境/构建问题",
+            "status": "completed",
+            "passes": true
+        },
+        {
+            "id": "52",
+            "description": "继续 CPU attention locality 计划：为 attention benchmark 新增 `attn_locality_mode/group_span` 开关、rank locality 摘要，并在 C++ utils 层补 `describe_cpu_locality_groups` 与线程 locality cache，为后续新 kernel 调度实现打基础",
+            "status": "completed",
+            "passes": true
+        },
+        {
+            "id": "53",
+            "description": "继续 CPU attention locality 计划：在新增的 `cpu_attn_acc_locality` kernel/op 路径里实现基于 L3 线程子池的 scheduler metadata 与 runtime task 枚举，保持旧 kernel 默认路径不变",
+            "status": "completed",
+            "passes": true
+        },
+        {
+            "id": "54",
+            "description": "基于新的 `cpu_attn_acc_locality` kernel/op 路径做首轮 benchmark 对照与结果落盘，优先验证 `acc-local-l3` 在 attention-only 脚本中的可观测性与性能变化，再决定是否继续扩展 group-span/heuristic",
+            "status": "pending",
+            "passes": false
+        },
+        {
+            "id": "55",
+            "description": "对 `info/ai-research/相关工作` 下的论文做二次筛选与总结，并结合 `info/进展.md` 给出高可行研究方向，结果写入新文档并补索引",
+            "status": "completed",
+            "passes": true
+        },
+        {
+            "id": "56",
+            "description": "编写 `acc-local-l3` 新 CPU attention kernel 的实现说明文档，覆盖设计约束、metadata/runtime 核心逻辑、Python 接入路径，并补 `info` 索引",
+            "status": "completed",
+            "passes": true
+        },
+        {
+            "id": "57",
+            "description": "更新 `attention-only TP` 实验文档，补 `acc-local-l3` 与 `balanced` 对照命令，并明确最小改动方案是不修改 benchmark 脚本",
+            "status": "completed",
+            "passes": true
+        },
+        {
+            "id": "58",
+            "description": "下载 `2026-04-04_相关工作论文筛选与研究方向建议.md` 中第一层主线深读的 8 篇论文到本地 `info/papers/`，并记录缺失项",
+            "status": "completed",
+            "passes": true
+        },
+        {
+            "id": "59",
+            "description": "精读 `ArcLight`，输出到 `info/ai-research/相关工作/精读/2026-04-07_ArcLight精读.md`；重点提炼 CPU LLM 推理的线程/内存/TP 设计、实验平台、证据边界，并对照当前课题写可迁移点与不可直接迁移点",
+            "status": "completed",
+            "passes": true
+        },
+        {
+            "id": "60",
+            "description": "精读 `CHARM`，输出到 `info/ai-research/相关工作/精读/2026-04-07_CHARM精读.md`；重点提炼 `LocalCache/DistributedCache` 切换条件、chiplet runtime 映射策略、实验平台与证据边界，并对照当前课题写可迁移点与不可直接迁移点",
+            "status": "pending",
+            "passes": false
+        },
+        {
+            "id": "61",
+            "description": "精读 `Sandwich`，输出到 `info/ai-research/相关工作/精读/2026-04-07_Sandwich精读.md`；重点提炼 `prefill/decode` 分相编译与 NUMA 策略差异，并对照当前 `Prefill/Decode` 实验结果写映射",
+            "status": "pending",
+            "passes": false
+        },
+        {
+            "id": "62",
+            "description": "精读 `Optimizing Attention on GPUs by Exploiting GPU Architectural NUMA Effects`，输出到 `info/ai-research/相关工作/精读/2026-04-07_GPU_Attention_NUMA精读.md`；重点提炼 `ACC` 定义、映射策略、收益来源，并对照当前 CPU prefill `kv_head` 局部性写映射",
+            "status": "pending",
+            "passes": false
+        },
+        {
+            "id": "63",
+            "description": "精读 `Hydragen`，输出到 `info/ai-research/相关工作/精读/2026-04-07_Hydragen精读.md`；重点提炼 shared-prefix 工作集定义、系统实现与证据边界，并对照当前课题写映射",
+            "status": "pending",
+            "passes": false
+        },
+        {
+            "id": "64",
+            "description": "精读 `ChunkAttention`，输出到 `info/ai-research/相关工作/精读/2026-04-07_ChunkAttention精读.md`；重点提炼 prefix-aware KV cache、two-phase partition 与 locality 机制，并对照当前课题写映射",
+            "status": "pending",
+            "passes": false
+        },
+        {
+            "id": "65",
+            "description": "精读 `ARCAS`，输出到 `info/ai-research/相关工作/精读/2026-04-07_ARCAS精读.md`；重点提炼局部 cache 延迟与聚合 cache 容量的权衡条件，并对照当前课题写映射",
+            "status": "pending",
+            "passes": false
+        },
+        {
+            "id": "66",
+            "description": "精读 `Optimizing Sorting for Chiplet-Based CPUs`，输出到 `info/ai-research/相关工作/精读/2026-04-07_OptimizingSorting精读.md`；重点提炼数据规模与本地/聚合 L3 的关系，并对照当前课题写映射",
+            "status": "pending",
+            "passes": false
+        },
+        {
+            "id": "67",
+            "description": "在完成任务 `59-66` 后，汇总 8 篇论文的共同结论、矛盾点与对当前课题最直接的研究启发，输出到 `info/ai-research/相关工作/精读/2026-04-07_主线论文精读总汇.md`，并回写 `相关工作` 入口索引",
+            "status": "pending",
+            "passes": false
+        },
+        {
+            "id": "68",
+            "description": "为 `acc-local-l3` CPU attention kernel 增加受环境变量控制的 runtime 任务划分日志，并给出可直接复现的运行命令",
+            "status": "completed",
+            "passes": true
+        },
+        {
+            "id": "69",
+            "description": "整理 `Qwen3-30B-A3B` 在本机 `32 MiB` 本地 L3 下的 attention KV 工作集容量估算，并写入 `info/vllm_analysis` 文档，补充索引入口",
+            "status": "completed",
+            "passes": true
+        },
+        {
+            "id": "70",
+            "description": "修订 `Qwen3-30B-A3B_attention-only_TP实验步骤.md` 中 locality 对照实验命令，统一为 `balanced/acc-local-l3` 成对执行口径，并修正 helper 示例里的参数传递",
+            "status": "completed",
+            "passes": true
+        },
+        {
+            "id": "71",
+            "description": "分析 `P3_AttnOnly/Qwen3-30B-A3B` 下 `q128_kv128/q512_kv512` 的 `balanced` 与 `acc-local-l3` 对照结果，判断新 kernel 是否真正带来性能提升，并给出基于日志/PCM/源码的解释",
+            "status": "completed",
+            "passes": true
+        },
+        {
+            "id": "72",
+            "description": "解释 `acc-local-l3` 路径中为什么 `attention task` 数会显著少于 legacy 路径，并将原因对应到 `TP2` 实验 local shape 与源码公式",
+            "status": "completed",
+            "passes": true
+        },
+        {
+            "id": "73",
+            "description": "说明如何查看 `acc-local-l3` metadata 中的 `legacy_effective_thread_num` 与 `attention_task_num`，并给出可直接运行的命令",
+            "status": "completed",
+            "passes": true
+        },
+        {
+            "id": "74",
+            "description": "解释 benchmark runtime log 中为何只能看到 `legacy_effective_thread_num` 而看不到 `attention_task_num`，并给出当前可用的查看办法",
+            "status": "completed",
+            "passes": true
+        },
+        {
+            "id": "75",
+            "description": "在 `acc-local-l3` runtime summary 中补充 `attention_task_num` 与 `legacy_attention_task_num` 日志，并用单测验证输出字段可见",
+            "status": "completed",
+            "passes": true
+        },
+        {
+            "id": "76",
+            "description": "参考 karpathy 的 `llm-wiki`，评估当前 `info/` 文档库是否适合在无 GUI 环境下演进为 wiki，并形成带证据的可行性文档",
             "status": "completed",
             "passes": true
         }

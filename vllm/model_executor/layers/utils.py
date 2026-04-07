@@ -11,6 +11,7 @@ from vllm import envs
 from vllm._aiter_ops import rocm_aiter_ops
 from vllm.logger import init_logger
 from vllm.platforms import CpuArchEnum, current_platform
+from vllm.platforms.cpu import supports_amx_tiles
 from vllm.utils.platform_utils import get_cu_count
 from vllm.utils.torch_utils import direct_register_custom_op
 
@@ -205,7 +206,7 @@ direct_register_custom_op(
 
 def check_cpu_sgl_kernel(n: int, k: int, dtype: torch.dtype) -> bool:
     return (
-        torch._C._cpu._is_amx_tile_supported()
+        supports_amx_tiles()
         and (dtype in (torch.bfloat16, torch.int8))
         and k % 32 == 0
         and n % 16 == 0

@@ -5,6 +5,9 @@
 #include <torch/library.h>
 
 std::string init_cpu_threads_env(const std::string& cpu_ids);
+namespace cpu_utils {
+std::string describe_cpu_locality_groups(const std::string& cpu_ids);
+}
 
 void release_dnnl_matmul_handler(int64_t handler);
 
@@ -82,6 +85,14 @@ torch::Tensor get_scheduler_metadata(
     const int64_t window_size, const std::string& isa_hint,
     const bool enable_kv_split);
 
+torch::Tensor get_scheduler_metadata_acc_locality(
+    const int64_t num_req, const int64_t num_heads_q,
+    const int64_t num_heads_kv, const int64_t head_dim,
+    const torch::Tensor& seq_lens, at::ScalarType dtype,
+    const torch::Tensor& query_start_loc, const bool casual,
+    const int64_t window_size, const std::string& isa_hint,
+    const bool enable_kv_split);
+
 void cpu_attn_reshape_and_cache(const torch::Tensor& key,
                                 const torch::Tensor& value,
                                 torch::Tensor& key_cache,
@@ -99,6 +110,20 @@ void cpu_attention_with_kv_cache(
     const torch::Tensor& block_table, const double softcap,
     const torch::Tensor& scheduler_metadata,
     const std::optional<torch::Tensor>& s_aux);
+
+void cpu_attention_with_kv_cache_acc_locality(
+    const torch::Tensor& query, const torch::Tensor& key_cache,
+    const torch::Tensor& value_cache, torch::Tensor& output,
+    const torch::Tensor& query_start_loc, const torch::Tensor& seq_lens,
+    const double scale, const bool causal,
+    const std::optional<torch::Tensor>& alibi_slopes,
+    const int64_t sliding_window_left, const int64_t sliding_window_right,
+    const torch::Tensor& block_table, const double softcap,
+    const torch::Tensor& scheduler_metadata,
+    const std::optional<torch::Tensor>& s_aux);
+
+std::string inspect_cpu_attn_acc_locality_metadata(
+    const torch::Tensor& scheduler_metadata);
 
 // Note: just for avoiding importing errors
 void placeholder_op() { TORCH_CHECK(false, "Unimplemented"); }
@@ -282,6 +307,12 @@ TORCH_LIBRARY_EXPAND(TORCH_EXTENSION_NAME, ops) {
       "enable_kv_split) -> Tensor",
       &get_scheduler_metadata);
   ops.def(
+      "get_scheduler_metadata_acc_locality(int num_req, int num_heads_q, int "
+      "num_heads_kv, int head_dim, Tensor seq_lens, ScalarType dtype, Tensor "
+      "query_start_loc, bool casual, int window_size, str isa_hint, bool "
+      "enable_kv_split) -> Tensor",
+      &get_scheduler_metadata_acc_locality);
+  ops.def(
       "cpu_attn_reshape_and_cache(Tensor key, Tensor value, Tensor(a2!) "
       "key_cache, Tensor(a3!) value_cache, Tensor slot_mapping, str "
       "isa) -> ()",
@@ -293,6 +324,14 @@ TORCH_LIBRARY_EXPAND(TORCH_EXTENSION_NAME, ops) {
       "sliding_window_left, SymInt sliding_window_right, Tensor block_table, "
       "float softcap, Tensor sheduler_metadata, Tensor? s_aux) -> ()",
       &cpu_attention_with_kv_cache);
+  ops.def(
+      "cpu_attention_with_kv_cache_acc_locality(Tensor query, Tensor "
+      "key_cache, Tensor value_cache, Tensor(a3!) output, Tensor "
+      "query_start_loc, Tensor seq_lens, float scale, bool causal, Tensor? "
+      "alibi_slopes, SymInt sliding_window_left, SymInt "
+      "sliding_window_right, Tensor block_table, float softcap, Tensor "
+      "sheduler_metadata, Tensor? s_aux) -> ()",
+      &cpu_attention_with_kv_cache_acc_locality);
 
   // placeholders
   ops.def("static_scaled_fp8_quant() -> ()", placeholder_op);
@@ -325,6 +364,10 @@ TORCH_LIBRARY_EXPAND(TORCH_EXTENSION_NAME, ops) {
 TORCH_LIBRARY_EXPAND(CONCAT(TORCH_EXTENSION_NAME, _utils), utils) {
   // CPU utils
   utils.def("init_cpu_threads_env(str cpu_ids) -> str", &init_cpu_threads_env);
+  utils.def("describe_cpu_locality_groups(str cpu_ids) -> str",
+            &cpu_utils::describe_cpu_locality_groups);
+  utils.def("inspect_cpu_attn_acc_locality_metadata(Tensor scheduler_metadata) -> str",
+            &inspect_cpu_attn_acc_locality_metadata);
 }
 
 TORCH_LIBRARY_EXPAND(CONCAT(TORCH_EXTENSION_NAME, _cpu), cpu_ops) {

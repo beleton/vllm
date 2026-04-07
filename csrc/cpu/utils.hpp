@@ -2,7 +2,11 @@
 #define UTILS_HPP
 
 #include <atomic>
+#include <map>
+#include <mutex>
+#include <tuple>
 #include <unistd.h>
+#include <vector>
 #include <ATen/cpu/Utils.h>
 
 #include "cpu/cpu_types.hpp"
@@ -54,6 +58,35 @@ struct Counter {
 
   int64_t acquire_counter() { return counter++; }
 };
+
+struct ThreadLocalityGroupInfo {
+  int32_t numa_node;
+  int32_t socket_id;
+  int32_t l3_cache_id;
+  std::vector<int32_t> thread_ids;
+  std::vector<int32_t> cpu_ids;
+};
+
+class ThreadLocalityManager {
+ public:
+  static ThreadLocalityManager* get_thread_locality_manager();
+
+  void set_thread_cpu_ids(const std::vector<int>& omp_cpu_ids);
+
+  const std::vector<ThreadLocalityGroupInfo>& get_groups() const;
+
+  int32_t get_group_id_for_thread(int32_t omp_thread_id) const;
+
+  int32_t get_local_offset_in_group(int32_t omp_thread_id) const;
+
+ private:
+  mutable std::mutex mutex_;
+  std::vector<int32_t> thread_to_group_id_;
+  std::vector<int32_t> thread_to_local_offset_;
+  std::vector<ThreadLocalityGroupInfo> groups_;
+};
+
+std::string describe_cpu_locality_groups(const std::string& cpu_ids);
 
 inline int64_t get_available_l2_size() {
   static int64_t size = []() {

@@ -32,6 +32,7 @@ from vllm.model_executor.parameter import (
     PackedvLLMParameter,
 )
 from vllm.platforms import current_platform
+from vllm.platforms.cpu import supports_amx_tiles
 from vllm.transformers_utils.config import get_safetensors_params_metadata
 
 logger = init_logger(__name__)
@@ -292,7 +293,7 @@ class CPUAWQLinearMethod(LinearMethodBase):
 
 
 def _get_isa_hint(dtype: torch.dtype) -> str:
-    supports_amx = torch._C._cpu._is_amx_tile_supported()
+    supports_amx = supports_amx_tiles()
     if supports_amx and dtype in (torch.bfloat16,):
         return "amx"
     else:

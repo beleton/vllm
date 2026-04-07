@@ -8,3 +8,5 @@
 - `07_benchmarks与tests筛选.md` vllm bench serve、kernel 微基准和 tests 入口的选择逻辑与先后顺序。
 - `08_CPU_attention计算切分、数据放置与Chiplet优化借鉴.md` attention 计算切分、KV 数据布置和可能借鉴的 Chiplet 优化思路。
 - `09_CPU_attention并行计算过程_线程任务workitem与tile.md` attention 并行计算的 task/workitem/tile 组织，线程实际参与量。
+- `10_CPU_attention_acc_locality新kernel实现说明.md` 新增 `acc-local-l3` kernel 的设计约束、metadata 布局、runtime 调度逻辑与接入路径。
+- `11_Qwen3-30B-A3B注意力KV工作集与32MiBL3容量估算.md` 基于模型配置和本机 `32 MiB` 本地 L3，估算 KV 工作集的理论容量阈值，并对照当前 `P2` 结果给出更贴近实验的转折区间。
