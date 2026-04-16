@@ -1,0 +1,16 @@
+Intel(R) Memory Latency Checker - v3.12
+Command line parameters: --c2c_latency 
+
+Measuring cache-to-cache transfer latency (in ns)...
+Local Socket L2->L2 HIT  latency	38.6
+Local Socket L2->L2 HITM latency	38.6
+Remote Socket L2->L2 HITM latency (data address homed in writer socket)
+			Reader Numa Node
+Writer Numa Node     0	     1	
+            0	     -	 252.2	
+            1	 250.9	     -	
+Remote Socket L2->L2 HITM latency (data address homed in reader socket)
+			Reader Numa Node
+Writer Numa Node     0	     1	
+            0	     -	 251.9	
+            1	 251.4	     -	

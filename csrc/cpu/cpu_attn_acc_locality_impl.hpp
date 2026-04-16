@@ -31,6 +31,7 @@ struct alignas(64) AttentionMetadata {
   int32_t version;
   int32_t thread_num;
   int32_t subgroup_num;
+  int32_t group_span;
   int32_t legacy_thread_num;
   int32_t legacy_effective_thread_num;
   int32_t actual_kv_head_num;
@@ -51,6 +52,7 @@ struct alignas(64) AttentionMetadata {
         version(1),
         thread_num(0),
         subgroup_num(0),
+        group_span(1),
         legacy_thread_num(0),
         legacy_effective_thread_num(0),
         actual_kv_head_num(0),
@@ -82,6 +84,7 @@ struct alignas(64) AttentionMetadata {
     ss << '{';
     ss << "\"thread_num\":" << thread_num << ',';
     ss << "\"subgroup_num\":" << subgroup_num << ',';
+    ss << "\"group_span\":" << group_span << ',';
     ss << "\"legacy_thread_num\":" << legacy_thread_num << ',';
     ss << "\"legacy_effective_thread_num\":" << legacy_effective_thread_num
        << ',';
@@ -201,12 +204,71 @@ inline void init_thread_locality_mapping(AttentionMetadata* metadata,
   metadata->max_subgroup_thread_num = max_subgroup_thread_num;
 }
 
+inline int32_t normalize_group_span(int32_t group_span, int32_t subgroup_num) {
+  if (subgroup_num <= 0) {
+    return 1;
+  }
+  return std::max(1, std::min(group_span, subgroup_num));
+}
+
+inline bool kv_head_covers_subgroup(const AttentionMetadata& metadata,
+                                    int32_t kv_head_idx,
+                                    int32_t subgroup_id) {
+  const int32_t subgroup_num = metadata.subgroup_num;
+  if (subgroup_num <= 0) {
+    return true;
+  }
+  const int32_t start_subgroup = metadata.kv_head_to_subgroup[kv_head_idx];
+  const int32_t subgroup_delta =
+      (subgroup_id - start_subgroup + subgroup_num) % subgroup_num;
+  return subgroup_delta < metadata.group_span;
+}
+
+inline int32_t get_kv_head_covered_thread_num(const AttentionMetadata& metadata,
+                                              int32_t kv_head_idx) {
+  if (metadata.subgroup_num <= 0) {
+    return metadata.thread_num;
+  }
+
+  int32_t covered_thread_num = 0;
+  const int32_t start_subgroup = metadata.kv_head_to_subgroup[kv_head_idx];
+  for (int32_t subgroup_offset = 0; subgroup_offset < metadata.group_span;
+       ++subgroup_offset) {
+    const int32_t subgroup_id =
+        (start_subgroup + subgroup_offset) % metadata.subgroup_num;
+    covered_thread_num += metadata.subgroup_thread_num[subgroup_id];
+  }
+  return covered_thread_num;
+}
+
+inline int32_t get_kv_head_covered_thread_offset(
+    const AttentionMetadata& metadata, int32_t kv_head_idx, int32_t subgroup_id,
+    int32_t local_offset) {
+  if (!kv_head_covers_subgroup(metadata, kv_head_idx, subgroup_id)) {
+    return -1;
+  }
+
+  int32_t covered_thread_offset = local_offset;
+  const int32_t start_subgroup = metadata.kv_head_to_subgroup[kv_head_idx];
+  for (int32_t subgroup_offset = 0; subgroup_offset < metadata.group_span;
+       ++subgroup_offset) {
+    const int32_t current_subgroup_id =
+        (start_subgroup + subgroup_offset) % metadata.subgroup_num;
+    if (current_subgroup_id == subgroup_id) {
+      return covered_thread_offset;
+    }
+    covered_thread_offset += metadata.subgroup_thread_num[current_subgroup_id];
+  }
+
+  return -1;
+}
+
 inline at::Tensor build_scheduler_metadata(
     int64_t num_req, int64_t num_heads_q, int64_t num_heads_kv,
     int64_t head_dim, const at::Tensor& seq_lens, at::ScalarType dtype,
     const at::Tensor& query_start_loc, bool casual, int64_t window_size,
     const std::string& isa_hint, bool enable_kv_split,
-    int32_t max_num_q_per_iter) {
+    int32_t max_num_q_per_iter, int32_t group_span) {
   TORCH_CHECK_LE(omp_get_max_threads(), kMaxThreadNum);
   const int32_t thread_num = omp_get_max_threads();
   const int32_t actual_kv_head_num = get_actual_kv_head_num(
@@ -233,6 +295,8 @@ inline at::Tensor build_scheduler_metadata(
   metadata->legacy_metadata_offset = legacy_metadata_offset;
   metadata->legacy_metadata_size = legacy_metadata_size;
   init_thread_locality_mapping(metadata, thread_num);
+  metadata->group_span =
+      normalize_group_span(group_span, metadata->subgroup_num);
 
   std::memcpy(reinterpret_cast<char*>(metadata) + legacy_metadata_offset,
               legacy_metadata_tensor.data_ptr(), legacy_metadata_size);
@@ -258,15 +322,17 @@ inline at::Tensor build_scheduler_metadata(
 
   for (int32_t kv_head_idx = 0; kv_head_idx < actual_kv_head_num;
        ++kv_head_idx) {
-    const int32_t subgroup_id =
-        metadata->subgroup_num > 0 ? (kv_head_idx % metadata->subgroup_num) : 0;
-    metadata->kv_head_to_subgroup[kv_head_idx] = subgroup_id;
+    const int32_t start_subgroup = metadata->subgroup_num > 0
+                                       ? (kv_head_idx * metadata->group_span) %
+                                             metadata->subgroup_num
+                                       : 0;
+    metadata->kv_head_to_subgroup[kv_head_idx] = start_subgroup;
+    const int32_t covered_thread_num =
+        get_kv_head_covered_thread_num(*metadata, kv_head_idx);
     metadata->attention_task_num +=
-        std::min(metadata->subgroup_thread_num[subgroup_id],
-                 legacy_metadata->effective_thread_num);
+        std::min(covered_thread_num, legacy_metadata->effective_thread_num);
     metadata->reduction_task_num +=
-        std::min(metadata->subgroup_thread_num[subgroup_id],
-                 legacy_metadata->reduction_item_num);
+        std::min(covered_thread_num, legacy_metadata->reduction_item_num);
   }
 
   return metadata_tensor;
@@ -277,11 +343,6 @@ inline std::string inspect_scheduler_metadata(const at::Tensor& scheduler_metada
       reinterpret_cast<const AttentionMetadata*>(scheduler_metadata.data_ptr());
   TORCH_CHECK_EQ(metadata->magic, kAccLocalityMetadataMagic);
   return metadata->to_json();
-}
-
-inline bool should_log_runtime_summary() {
-  const char* env = std::getenv("VLLM_CPU_ATTN_ACC_LOCALITY_DEBUG");
-  return env != nullptr && env[0] != '\0' && env[0] != '0';
 }
 
 inline std::string format_int_list(const std::vector<int32_t>& values) {
@@ -302,16 +363,30 @@ inline std::string build_runtime_summary(const AttentionMetadata& metadata) {
   ss << "CPU attention acc-locality runtime summary\n";
   ss << "  thread_num=" << metadata.thread_num
      << ", subgroup_num=" << metadata.subgroup_num
+     << ", group_span=" << metadata.group_span
      << ", legacy_effective_thread_num=" << metadata.legacy_effective_thread_num
      << ", actual_kv_head_num=" << metadata.actual_kv_head_num
      << ", attention_task_num=" << metadata.attention_task_num
      << ", legacy_attention_task_num=" << metadata.legacy_attention_task_num
      << ", reduction_item_num=" << metadata.reduction_item_num << '\n';
 
+  for (int32_t kv_head_idx = 0; kv_head_idx < metadata.actual_kv_head_num;
+       ++kv_head_idx) {
+    std::vector<int32_t> subgroup_ids;
+    for (int32_t subgroup_id = 0; subgroup_id < metadata.subgroup_num;
+         ++subgroup_id) {
+      if (kv_head_covers_subgroup(metadata, kv_head_idx, subgroup_id)) {
+        subgroup_ids.push_back(subgroup_id);
+      }
+    }
+    ss << "  kv_head " << kv_head_idx
+       << ": subgroup_start=" << metadata.kv_head_to_subgroup[kv_head_idx]
+       << ", subgroups=" << format_int_list(subgroup_ids) << '\n';
+  }
+
   for (int32_t subgroup_id = 0; subgroup_id < metadata.subgroup_num; ++subgroup_id) {
     std::vector<int32_t> thread_ids;
     std::vector<int32_t> kv_heads;
-    std::vector<int32_t> legacy_slots;
     const int32_t subgroup_thread_num = metadata.subgroup_thread_num[subgroup_id];
 
     for (int32_t thread_id = 0; thread_id < metadata.thread_num; ++thread_id) {
@@ -327,37 +402,57 @@ inline std::string build_runtime_summary(const AttentionMetadata& metadata) {
 
     for (int32_t kv_head_idx = 0; kv_head_idx < metadata.actual_kv_head_num;
          ++kv_head_idx) {
-      if (metadata.kv_head_to_subgroup[kv_head_idx] == subgroup_id) {
+      if (kv_head_covers_subgroup(metadata, kv_head_idx, subgroup_id)) {
         kv_heads.push_back(kv_head_idx);
-      }
-    }
-
-    if (subgroup_thread_num > 0) {
-      for (int32_t local_offset = 0; local_offset < subgroup_thread_num; ++local_offset) {
-        for (int32_t legacy_slot = local_offset;
-             legacy_slot < metadata.legacy_effective_thread_num;
-             legacy_slot += subgroup_thread_num) {
-          legacy_slots.push_back(legacy_slot);
-        }
       }
     }
 
     ss << "  subgroup " << subgroup_id
        << ": threads=" << format_int_list(thread_ids)
-       << ", kv_heads=" << format_int_list(kv_heads)
-       << ", legacy_slots=" << format_int_list(legacy_slots) << '\n';
+       << ", kv_heads=" << format_int_list(kv_heads) << '\n';
+
+    for (int32_t kv_head_idx : kv_heads) {
+      std::vector<int32_t> subgroup_legacy_slots;
+      const int32_t covered_thread_num =
+          get_kv_head_covered_thread_num(metadata, kv_head_idx);
+      const int32_t subgroup_thread_offset =
+          get_kv_head_covered_thread_offset(metadata, kv_head_idx, subgroup_id, 0);
+      if (subgroup_thread_num > 0) {
+        for (int32_t local_offset = 0; local_offset < subgroup_thread_num;
+             ++local_offset) {
+          const int32_t covered_thread_offset = get_kv_head_covered_thread_offset(
+              metadata, kv_head_idx, subgroup_id, local_offset);
+          for (int32_t legacy_slot = covered_thread_offset;
+               legacy_slot < metadata.legacy_effective_thread_num;
+               legacy_slot += covered_thread_num) {
+            subgroup_legacy_slots.push_back(legacy_slot);
+          }
+        }
+      }
+      ss << "    kv_head " << kv_head_idx
+         << ": covered_thread_num=" << covered_thread_num
+         << ", subgroup_thread_offset=" << subgroup_thread_offset
+         << ", legacy_slots=" << format_int_list(subgroup_legacy_slots) << '\n';
+    }
 
     for (int32_t thread_id : thread_ids) {
-      std::vector<int32_t> thread_legacy_slots;
       const int32_t local_offset = metadata.thread_to_local_offset[thread_id];
-      for (int32_t legacy_slot = local_offset;
-           legacy_slot < metadata.legacy_effective_thread_num;
-           legacy_slot += subgroup_thread_num) {
-        thread_legacy_slots.push_back(legacy_slot);
+      for (int32_t kv_head_idx : kv_heads) {
+        std::vector<int32_t> thread_legacy_slots;
+        const int32_t covered_thread_num =
+            get_kv_head_covered_thread_num(metadata, kv_head_idx);
+        const int32_t covered_thread_offset = get_kv_head_covered_thread_offset(
+            metadata, kv_head_idx, subgroup_id, local_offset);
+        for (int32_t legacy_slot = covered_thread_offset;
+             legacy_slot < metadata.legacy_effective_thread_num;
+             legacy_slot += covered_thread_num) {
+          thread_legacy_slots.push_back(legacy_slot);
+        }
+        ss << "    thread " << thread_id
+           << ": kv_head " << kv_head_idx
+           << ", covered_thread_offset=" << covered_thread_offset
+           << ", legacy_slots=" << format_int_list(thread_legacy_slots) << '\n';
       }
-      ss << "    thread " << thread_id
-         << ": local_offset=" << local_offset
-         << ", legacy_slots=" << format_int_list(thread_legacy_slots) << '\n';
     }
   }
 
@@ -389,7 +484,7 @@ class AttentionMainLoop
     AttentionMetadata& metadata = *input->metadata;
     TORCH_CHECK_EQ(metadata.thread_num, thread_num);
     cpu_attention::AttentionMetadata& legacy_metadata = *metadata.legacy_metadata();
-    if (should_log_runtime_summary()) {
+    if (cpu_attention::should_log_runtime_summary()) {
       const std::string summary = build_runtime_summary(metadata);
       std::printf("%s", summary.c_str());
       std::fflush(stdout);
@@ -779,23 +874,32 @@ class AttentionMainLoop
 
       for (int32_t kv_head_idx = 0; kv_head_idx < actual_kv_head_num;
            ++kv_head_idx) {
-        if (metadata.kv_head_to_subgroup[kv_head_idx] != subgroup_id) {
+        if (!kv_head_covers_subgroup(metadata, kv_head_idx, subgroup_id)) {
           continue;
         }
-        for (int32_t legacy_thread_offset = local_offset;
+        const int32_t covered_thread_num =
+            get_kv_head_covered_thread_num(metadata, kv_head_idx);
+        const int32_t covered_thread_offset = get_kv_head_covered_thread_offset(
+            metadata, kv_head_idx, subgroup_id, local_offset);
+        for (int32_t legacy_thread_offset = covered_thread_offset;
              legacy_thread_offset < effective_thread_num;
-             legacy_thread_offset += subgroup_thread_num) {
+             legacy_thread_offset += covered_thread_num) {
           run_attention_for_legacy_thread(kv_head_idx, legacy_thread_offset);
         }
       }
 
       for (int32_t kv_head_idx = 0; kv_head_idx < actual_kv_head_num;
            ++kv_head_idx) {
-        if (metadata.kv_head_to_subgroup[kv_head_idx] != subgroup_id) {
+        if (!kv_head_covers_subgroup(metadata, kv_head_idx, subgroup_id)) {
           continue;
         }
-        for (int32_t item_offset = local_offset; item_offset < reduction_item_num;
-             item_offset += subgroup_thread_num) {
+        const int32_t covered_thread_num =
+            get_kv_head_covered_thread_num(metadata, kv_head_idx);
+        const int32_t covered_thread_offset = get_kv_head_covered_thread_offset(
+            metadata, kv_head_idx, subgroup_id, local_offset);
+        for (int32_t item_offset = covered_thread_offset;
+             item_offset < reduction_item_num;
+             item_offset += covered_thread_num) {
           run_reduction_for_item(kv_head_idx, item_offset);
         }
       }

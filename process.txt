@@ -1,191 +1,29 @@
-2026-04-07 14:37:51 +0800
-- 相关工作精读任务的输出目录已建立：`info/ai-research/相关工作/精读/`。任务 `59` 的产物是 `2026-04-07_ArcLight精读.md`。
-- 本机当前没有 `pdfinfo/pdftotext`，但系统 `python` 可直接用 `pypdf` 抽文本；本轮 `ArcLight` 采用该路径完成证据提取。后续任务 `60-66` 若继续精读本地 PDF，可复用：
-  `python - <<'PY'`
-  `from pypdf import PdfReader`
-  `reader = PdfReader('info/papers/<paper>.pdf')`
-  `print(reader.pages[0].extract_text())`
-  `PY`
+2026-04-14 19:38:05 +0800
+- `wiki/`、`test_results/`、`tasks.json` 已承接当前主线结论、实验结果与待办；`process.txt` 只保留仍会影响后续复现、实验执行或问题排查的交接事项。
 
-2026-04-02 16:15:21 +0800
-- `tools/p2_attn_only/plot_pcm_summary.py` 的 `l3_latency_breakdown` 已从 `stackplot` 改成堆叠柱状图。
-- 当前语义是“每个 `q_len/kv_len` case 画一根柱”，x 轴 tick 直接标真实长度值；因此 [decode_l3_latency_breakdown_vs_kv_len.png](/home/zjj/vllm/test_results/P2_AttnOnly/Qwen3-30B-A3B/NPS1_TP2/plots/decode_l3_latency_breakdown_vs_kv_len.png) 和 [prefill_l3_latency_breakdown_vs_q_len.png](/home/zjj/vllm/test_results/P2_AttnOnly/Qwen3-30B-A3B/NPS1_TP2/plots/prefill_l3_latency_breakdown_vs_q_len.png) 现在都是按 case 数量绘制的堆叠柱状图。
+2026-04-09 14:50:23 +0800
+- `cpu_attn_acc_locality` 的 `group_span` 唯一分片修正已完成；旧的“多个 subgroup 重复执行同一批 legacy slot”问题已不再是当前主线。
+- 若继续验证 `acc-local-l3`，直接看 `wiki/源码分析/CPU_attention_acc_locality新kernel实现说明.md`、`wiki/实验结果解读/2026-04-05_Qwen3-30B-A3B_P3_AttnOnly_acc-local-l3对照观察.md` 和 `test_results/P3_AttnOnly/Qwen3-30B-A3B/NPS1_TP2/prefill-like/global-fixed/batch_16/summary.md`。
+- `q128_kv128/acc-local-l3_span4` 当前仍缺 PCM 报告；复用该结果目录时，不要把该点当成完整 PCM 对照。
 
-2026-04-02 16:02:01 +0800
-- `P2` attention-only PCM 结果已补通用整理/出图脚本：
-  - 解析脚本：`tools/p2_attn_only/pcm_summary.py`
-  - 出图脚本：`tools/p2_attn_only/plot_pcm_summary.py`
-  - 单测：`tests/tools/test_p2_attn_only_pcm.py`
-- 当前已对 `test_results/P2_AttnOnly/Qwen3-30B-A3B/NPS1_TP2` 实跑完成，产物位置：
-  - `summary.csv`
-  - `ccx_summary.csv`
-  - `summary.md`
-  - `plots/decode_l3_miss_vs_kv_len.png`
-  - `plots/decode_l3_latency_vs_kv_len.png`
-  - `plots/decode_l3_latency_breakdown_vs_kv_len.png`
-  - `plots/prefill_l3_miss_vs_q_len.png`
-  - `plots/prefill_l3_latency_vs_q_len.png`
-  - `plots/prefill_l3_latency_breakdown_vs_q_len.png`
-- 当前解析口径：
-  - `summary.csv` 只取 `report.json` 里 `group=[{'l3': [{'id': -1, 'name': 'system'}]}]` 的 system 级 `aggregated.average`
-  - `ccx_summary.csv` 额外保留 `ccx_id=0..15` 的同名指标，便于后续查局部不均衡
-  - 若同一 case 目录下存在多个 `pcm_l3_dc/*/report.json`，脚本按 `report.json` 文件修改时间取最新 session
-- 复用命令：
-  - `python tools/p2_attn_only/pcm_summary.py --result-root test_results/P2_AttnOnly/Qwen3-30B-A3B/<EXP_TAG>`
-  - `python tools/p2_attn_only/plot_pcm_summary.py --summary-csv test_results/P2_AttnOnly/Qwen3-30B-A3B/<EXP_TAG>/summary.csv`
-
-2026-04-02 15:08:56 +0800
-- `P2` attention-only 脚本与实验文档接口已完全收敛为 `q_len/kv_len`，不再使用 `input_len/output_len`。
-- 当前外部接口与结果路径口径：
-  - CLI / helper 一律传 `--q-len/--kv-len`
-  - 结果目录与 summary 一律写成 `batch_<B>/q<q_len>_KV_<kv_len>`
-  - `decode-like` / `prefill-like` 只保留 workload 语义和默认值，不再承担 `input/output` 到 `q/KV` 的映射层
-- 对应实现：
-  - 脚本源码：`benchmarks/kernels/cpu/benchmark_cpu_attn_mp.py`
-  - 测试文件：`tests/benchmarks/test_cpu_attn_mp.py`
-  - 文档 helper：`info/experiment_ops/Qwen3-30B-A3B_attention-only_TP实验步骤.md`
-
-2026-04-02 13:10:48 +0800
-- `P2` 文档中的 PCM helper 已进一步修订：去掉 `guard_s`，改为显式传 `pcm_duration_s` 与 `benchmark_min_runtime_s`，并要求 `benchmark_min_runtime_s > pcm_duration_s`。
-- 口径原因：正式 PCM 的首要目标是让 profiler 在程序稳定运行窗口内采样，而不是让 `-d` 覆盖 benchmark 全程；`summary.json` 可由 dry-run 提供。
-- 可行性验证路径：`test_results/P2_AttnOnly/_validation/pcm_duration_shorter/AMDuProfPcm-Multi_Apr-02-2026_13-09-31/report.json`。
-  - 对应命令是 `--start-delay 1000 -d 5 -I 100 ... --min-runtime-s 8`。
-  - 实际 wall time 约 `7.78s`，说明在当前 launcher 口径下，benchmark 可以比 profiler 更长，profiler 仍会正常生成报告。
-- 当前文档里的推荐起步值已改成：`pcm_duration_s=120`、`benchmark_min_runtime_s=130`、`interval_ms=100`。
-
-2026-04-02 12:56:36 +0800
-- `benchmark_cpu_attn_mp.py` 已新增 `--min-runtime-s`，并与 `--iters` 做成互斥参数；`--iters` 路径保留逐轮 `times_ms`，`--min-runtime-s` 路径只保留聚合统计与 `measurement_iters`，避免 decode 长跑写出超大 JSON。
-- 触发这次修正的证据来自 `2026-04-02 01:10-01:11` 那批 `NPS1_TP2` 结果：`report.json` 明确记录实际 profiler 命令是 `--start-delay 5000 -d 20`，且 `SAMPLE_INTERVAL (ms)=1000`，不符合文档原先宣称的 `10000/120s` 口径。对应路径：
-  - `test_results/P2_AttnOnly/Qwen3-30B-A3B/NPS1_TP2/decode-like/global-fixed/pcm_l3_dc/AMDuProfPcm-Multi_Apr-02-2026_01-10-42/report.json`
-  - `test_results/P2_AttnOnly/Qwen3-30B-A3B/NPS1_TP2/prefill-like/global-fixed/pcm_l3_dc/AMDuProfPcm-Multi_Apr-02-2026_01-11-36/report.json`
-- `info/experiment_ops/Qwen3-30B-A3B_attention-only_TP实验步骤.md` 已改为正式 PCM 统一使用 `--min-runtime-s`，并在 helper 中显式传 `-I`，同时让 `duration_s` 按 `start-delay + min-runtime + guard` 自动计算。
-- 旧结果摘要 `test_results/P2_AttnOnly/Qwen3-30B-A3B/NPS1_TP2/2026-04-02_01-11-58_nps1_tp2_attention_only_global_fixed_summary.md` 已降级为“短 session smoke test”，不能再当正式 locality 比较结论。
-- 验证证据：
-  - 真实小运行：`test_results/P2_AttnOnly/_validation/min_runtime_decode_tp2.json`，证明 `--min-runtime-s` 路径会自然退出并落盘聚合统计。
-  - 短 PCM smoke：`test_results/P2_AttnOnly/_validation/pcm_min_runtime_smoke/AMDuProfPcm-Multi_Apr-02-2026_12-55-02/report.json`，证明 profiler 已记录 `SAMPLE_INTERVAL (ms)=100` 和 `--min-runtime-s 1`。
-  - 带足够 guard 的 PCM 验证：`test_results/P2_AttnOnly/_validation/pcm_min_runtime_guard/summary.json` 与其同目录 `report.json` 同时生成，说明新版 helper 思路可同时拿到 benchmark 汇总与 profiler 报告。
+2026-04-03 15:02:27 +0800
+- 运行 `python setup.py build_ext --inplace`、`pytest`、或任何依赖 `torch.ops._C*` 的命令时，先 `conda activate vllm-cpu`，并显式带 `PYTHONNOUSERSITE=1`，避免误加载 `~/.local/lib/python3.12/site-packages/torch`。
 
 2026-04-02 09:15:24 +0800
-- 已完成 `P2` 的 `NPS1_TP2` `global-fixed` 首轮 `decode-like/prefill-like` 批次，结果根目录：`test_results/P2_AttnOnly/Qwen3-30B-A3B/NPS1_TP2`。
-- 本轮结果摘要：`test_results/P2_AttnOnly/Qwen3-30B-A3B/NPS1_TP2/2026-04-02_01-11-58_nps1_tp2_attention_only_global_fixed_summary.md`。
-- 运行时拓扑证据显示当前环境只暴露 `2` 个 NUMA node；`dry_run_summary.json` 里 `rank0 omp_cpuids=256-382`、`rank1 omp_cpuids=384-510`，结合 `lscpu_topology.json` 可对应到 `node0/node1`，说明脚本已按真实 worker 逻辑跨 node 绑 rank。
-- `AMDuProfPcm` 正常生成了 `report.json / report-cumulative.csv / report.html`，但 benchmark 自身的 `summary.json` 没有落盘；后续整理结果时应优先使用 `dry_run_summary.json + report.json`。
-- 任务 `10` 仍保持 `pending`：当前只完成了 `NPS1_TP2`，还缺 `NPS2_TP4 / NPS4_TP8`，也还没有做 `global-fixed` 与 `per-rank-fixed` 的正式对照分析。
-
-2026-04-02 00:51:20 +0800
-- `P2` 的脚本实现已经落地，但原 `tasks.json` 里的任务 `10` 仍不应标记完成；当前只完成了“试验台实现”，尚未完成 `AMDuProfPcm` 实验与 locality 结论。
-- 新脚本入口：`benchmarks/kernels/cpu/benchmark_cpu_attn_mp.py`。
-- 单进程 attention runner 已从 `benchmarks/kernels/cpu/benchmark_cpu_attn.py` 抽成可复用函数：`prepare_attention_run()`、`run_attention_iters()`、`benchmark_attention()`。
-- 真实 TP worker 的绑核逻辑已抽到 `vllm/v1/worker/cpu_binding.py`，并被 `vllm/v1/worker/cpu_worker.py` 与新 benchmark 脚本共用；关键复用口径仍绑定 `CPUWorker.init_device()` 与 `csrc/cpu/utils.cpp::init_cpu_threads_env()`。
-- 口径注意：
-  - 该脚本运行时只能识别当前 `CPU/CORE/NODE` 可见拓扑，也就是 NUMA node 列表；不能直接“识别 NPS”。`NPS1_TP2 / NPS2_TP4 / NPS4_TP8` 应作为实验批次标签，由外部实验环境保证。
-  - 脚本同时支持 `global-fixed` 与 `per-rank-fixed` 两种 head 切分口径，后续写结论时必须把“locality 改善”和“per-rank 工作量变小”分开解释。
-- 当前本地 Codex 环境缺少 `torch` 与 `pytest`，因此本轮只能做 `py_compile` 级静态验证；后续若要正式跑脚本或单测，应切到有 CPU vLLM 运行依赖的环境。
-
-2026-04-01 16:38:00 +0800
-- `Qwen3-30B-A3B` 在 `NPS1_TP2` 下相对 `2026-03-11 20:33:50 +0800` 历史结果的性能回退，当前最强证据指向“本地 Debug 构建 + 新负载形态叠加”，不应再直接与旧批次横向比较。
-- 复现实验：
-  - 历史基线：`test_results/NPS_Test/Qwen3-30B-A3B/NPS1_TP2/evalscope_res/20260311_203244/Qwen3-30B-A3B/parallel_2_number_2/benchmark_summary.json`，`Average latency=29.5197s`、`Output token throughput=69.3761 tok/s`、`Average TTFT=1.9778s`。
-  - 当前同服务、同旧负载复现：`outputs/20260401_repro_oldload/20260401_163258/Qwen3-30B-A3B/benchmark_summary.json`，`Average latency=138.734s`、`Output token throughput=14.762 tok/s`、`Average TTFT=39.6392s`。
-  - 因此回退不是仅由 `min-prompt-length 2 --max-prompt-length 1024` 引起；即便恢复旧的固定 `1024` prompt，当前服务仍显著慢于历史基线。
-- 当前用户新命令还额外引入了负载形态变化：
-  - `outputs/20260401_161341/Qwen3-30B-A3B/benchmark.log` 显示 `Sampling input lengths from [0, 1023)`，`benchmark_summary.json` 显示 `Average input tokens per request=772.0`、`Average TTFT=21.6045s`。
-  - 这说明新命令里的随机 prompt 长度会进一步抬高 prefill/TTFT，但不是主要根因。
-- Debug 构建证据：
-  - 当前 `serve` 进程 `20084` 与 worker `20545/20546` 的 `/proc/<pid>/maps` 都加载 `/home/zjj/vllm/vllm/_C.abi3.so`。
-  - 该扩展时间戳为 `2026-03-25 20:23:31 +0800`；`build/temp.linux-x86_64-cpython-312/CMakeCache.txt` 记录 `CMAKE_BUILD_TYPE=Debug`。
-  - `build/temp.linux-x86_64-cpython-312/compile_commands.json` 中 `_C` 的 CPU 扩展编译命令只有 `-g`，未见 `-O2/-O3`；而 oneDNN 子构建是 `-O3 -DNDEBUG`。
-- 后续口径：
-  - 若要和 `2026-03-11` 结果对比，先重建非 Debug 的 `_C.abi3.so`，重启 `vllm serve`，再用旧负载 `parallel=2 number=2 prompt=1024 output=1024` 复测。
-  - 在结果文档中，单独标注 `2026-03-25 20:23:31 +0800` 这版本地 `_C.abi3.so` 为 Debug 构建，避免误与历史批次混用。
+- `attention-only + AMDuProfPcm` 口径下，benchmark 自身的 `summary.json` 可能不落盘；整理结果时优先使用 `dry_run_summary.json + report.json/report-cumulative.csv`。
 
 2026-04-01 12:10:00 +0800
-- `AMDuProfCLI collect --config hotspots ... env ... vllm bench strict-batch ...` 在 CPU `TP=2` 场景下已确认不适合作为 `P0` 标准口径。
-- 失败证据：
-  - `2026-04-01 11:16:07 +0800` 的 session `test_results/PD_Test/Qwen3-30B-A3B/CLI_res/decode_B16_I1_O1024/hotspots/AMDuProf-env-Hotspots_Apr-01-2026_11-16-07`
-  - `report.csv` 中 `Profile Duration=7.910 seconds`，`Start Delay=300 seconds`，且 hottest functions/processes/modules 为空，说明目标进程在进入采样窗前已异常退出。
-  - 前台报错是 `AMDTPyTracer.py` 进入 `multiprocessing/spawn.py::spawn_main` 后触发 `AssertionError: Not forking`。
-- 根因链：
-  - CPU backend 强制 `VLLM_WORKER_MULTIPROC_METHOD=spawn`，证据：`vllm/platforms/cpu.py:273-276`。
-  - `TP=2` 时 worker 由 `MultiprocExecutor` 通过 multiprocessing context 拉起，证据：`vllm/v1/executor/multiproc_executor.py:136-165`、`613-624`。
-  - `AMDuProfCLI hotspots` 会给 Python 入口注入 `/opt/AMDuProf_5.2-606/bin/AMDTPyTracer.py`，该脚本对 `python -c ...` 直接 `exec(args)`，证据：`AMDTPyTracer.py:38-47`。
-- 后续口径：
-  - `hotspots` 改为“先启动 `strict-batch`，等 `Worker_TP* pid=` 出现在日志后，再用 `AMDuProfCLI collect -p <worker_pids>` attach”。
-  - `IBS L3-miss` 当前无同类 Python tracer 证据，可继续保留 launcher 模式，除非后续复现新的兼容性问题。
+- CPU `TP=2` 场景下，`AMDuProfCLI hotspots` 的 launcher 模式会被 `spawn` 路径打断；正式口径改为先启动目标，再按 `Worker_TP* pid` 用 `AMDuProfCLI collect -p <worker_pids>` attach。
+- `IBS L3-miss` 当前仍可保留 launcher 模式；仅在复现出新的兼容性问题时再调整。
 
 2026-04-01 00:02:04 +0800
-- `strict-batch` 在 CPU `TP=2` 场景报 `RuntimeError: create shm in SHMManager failed. errno: 17` 时，已确认根因是 `/dev/shm` 里残留的 `cpushm` 文件与本次 `VLLM_DIST_IDENT` 命名冲突。
-- 源码证据：
-  - `vllm/v1/worker/cpu_worker.py:92` 把 `VLLM_DIST_IDENT` 设为 `distributed_init_method` 的端口号。
-  - `vllm/distributed/device_communicators/cpu_communicator.py:160-172` 用该端口号拼出 `group_name=<port>-tp:0-[0-1]-cpushm`，随后调用 `torch.ops._C.init_shm_manager(...)`。
-- 运行证据：
-  - `2026-03-31 23:58:17 +0800` 的 `/dev/shm` 列表里已有 `48271-tp:0-[0-1]-cpushm_{0,1}`。
-  - 强制 `VLLM_PORT=48271` 的最小复现命令在 `2026-03-31 23:59:30 +0800` 再次报同样的 `errno: 17`。
-  - 删除 `/dev/shm/48271-tp:0-[0-1]-cpushm_{0,1}` 后，用同一个 `VLLM_PORT=48271` 复跑，已在 `2026-04-01 00:01:03 +0800` 越过 SHM 初始化并进入 `cpu_model_runner.py:55` 的模型加载。
-- 后续处置口径：
-  - 看到该报错时，先按端口前缀检查 `/dev/shm/<port>-tp:0-[0-1]-cpushm_*` 是否存在，并用 `lsof` 确认无人占用。
-  - 若确认是孤儿文件，只删除对应端口的那一对 `cpushm` 文件后重跑；不要直接清空整个 `/dev/shm`。
-  - 该问题与 `AMDuProfPcm` 本身无直接证据关联，实质是 CPU TP 共享内存命名依赖端口号，而端口可能被后续运行复用。
-
-2026-03-31 20:27:37 +0800
-- 任务 `25` 执行时，shell 环境里没有 `PARALLEL_API_KEY` / `OPENROUTER_API_KEY`，因此未使用 `parallel_web.py` / `research_lookup.py`。
-- 本轮改用内置联网检索，并将检索轨迹手工保存到 `sources/search_20260331_202737_chiplet_llm_round1.md`。
-- 若后续任务 `26` 仍未补齐上述环境变量，可继续沿用该 fallback，但要保持把查询轨迹落到 `sources/`。
+- 若 `strict-batch` 在 CPU `TP=2` 场景报 `create shm in SHMManager failed. errno: 17`，先按端口前缀检查 `/dev/shm/<port>-tp:0-[0-1]-cpushm_*`。
+- 确认是孤儿文件后，只删除对应端口那一对 `cpushm` 文件，不要清空整个 `/dev/shm`。
 
 2026-03-30 22:48:30 +0800
-- `AMDuProfPcm` launcher 校准新增实证：
-  - `prefill_B16_I128_O1` 的 session `test_results/PD_Test/Qwen3-30B-A3B/PCm_res/prefill_B16_I128_O1/metric2_l3_dc_l2_memory/AMDuProfPcm-Multi_Mar-30-2026_21-57-54` 已生成 `report-timeseries.csv`，但 `bench_res/.../result.json` 未生成。
-  - 到 `2026-03-30 22:48:30 +0800`，系统里只剩孤立 `AMDuProfPcm` 进程 `3994286`，已无 `vllm`/worker 子进程；随后需 `kill -9 3994286` 才清掉。
-  - 该现象说明：`-d` 到时后报告可能已经落盘，但 profiler/launcher 不一定会正常收尾，不能把较短 `-d` 当成 TP 场景的正常结束机制。
-- 最小对照：
-  - `AMDuProfPcm profile -m ipc -a -d 10 -O /tmp/pcm_short_target -- sleep 2`
-  - 实测约 `2.60s` 退出，说明只要目标程序先自然结束，`AMDuProfPcm` 会随之退出。
-- 后续执行口径：
-  - steady-state 校准时，优先减少 `--num-rounds` 让 `strict-batch` 自然结束，`-d` 只作为上界。
-  - 若 `report-timeseries.csv` / `report-cumulative.csv` 已生成但命令不退，先对残留 `AMDuProfPcm` 发 `SIGTERM` 或 `SIGINT`，等待补齐 `session.uprof` / `report.html`；不要先 `kill -9`。
-  - 仅当温和收尾后仍缺 `session.uprof` 时，才把该 session 视为“只能用 csv、无法再补 html”的残缺结果。
+- `AMDuProfPcm` 在 TP 场景下即使已生成 `report-timeseries.csv/report-cumulative.csv`，launcher 也可能不自动退出；`-d` 只能当采样上界，不能当正常收尾机制。
+- 若报告已落盘但命令不退，先发 `SIGTERM` 或 `SIGINT`，等待补齐 `session.uprof/report.html`；仅在温和收尾无效时再 `kill -9`。
+
 2026-04-02 17:19:41 +0800
-- 新增 `info/experiment_ops/Qwen3-30B-A3B_IBS来源延迟采样实验步骤.md`，用途是给 `another CCX cache` 与 `local memory` 的来源级平均访问延迟做 `AMDuProfCLI IBS OP` 采样与结果解释。
-- 当前口径固定要求 `collect` 时带 `-e event=ibs-op,ibsop-l3miss=1,call-graph`；文档中的来源平均延迟公式都建立在“样本已限制为 L3 miss”这个前提上。
-- 证据路径已写进文档：`AMDuProf_Collect_Help.txt`、`ibs_op_ld.json`、`ibs_op_ld_lat.json`、`0x1a_0x1.xml`。若后续升级 `AMDuProf` 版本，先复核这些定义是否变化，再复用同一公式。
-2026-04-02 19:03:07 +0800
-- `info/进展.md` 已补入 `P2/NPS1_TP2` 的阶段性判断：当前只支持把“按共享 K/V 工作集做拓扑感知放置”当作 `prefill` 的候选方向，不能写成已经被当前数据证明可稳定实现。
-- 当前覆盖边界已明确写回：只有 `NPS1_TP2 + global-fixed + batch=16`；`prefill-like` 覆盖 `q=kv=128/256/512/1024/2048`，`decode-like` 覆盖 `q=1, kv=256/512/1024/2048`。
-- 后续优先级也已写回 `进展.md`：
-  - 先补 `NPS2_TP4 / NPS4_TP8` 的 `global-fixed`
-  - 再补 `per-rank-fixed`
-  - 再在 `prefill q=512->1024`、`decode kv=1024->2048` 之间补更密的长度点
-  - 若要写服务侧结论，再补低/高 batch 对照
-2026-04-03 15:02:27 +0800
-- 本地 `vllm-cpu` 环境里若不显式带 `PYTHONNOUSERSITE=1`，`python` 会优先加载 `~/.local/lib/python3.12/site-packages/torch`，导致 `_C` 扩展与 conda 环境不一致；已验证会触发构建/导入问题。后续在这个任务链里运行 `python setup.py build_ext --inplace`、`pytest`、或任何依赖 `torch.ops._C*` 的命令时，都应使用：
-  `source /opt/miniconda3/etc/profile.d/conda.sh && conda activate vllm-cpu && PYTHONNOUSERSITE=1 ...`
-- `csrc/cpu/utils.cpp/.hpp` 已新增基于 sysfs 的 locality 基础设施，`torch.ops._C_utils.describe_cpu_locality_groups(cpu_ids)` 现在能返回 `numa_node/socket_id/l3_cache_id/cpu_ids` 摘要；`benchmark_cpu_attn_mp.py` 的 rank locality summary 也已优先复用这条 C++ 口径。
-- 新 kernel `cpu_attn_acc_locality` 目前仍是占位实现；真正未完成的是把上述 thread locality cache 接进新的 metadata/runtime。继续做该方向时，优先看 `tasks.json` 的任务 `53` 与 `docs/superpowers/plans/2026-04-02-cpu-attention-acc-locality.md` 的 Task 4/5。
-2026-04-03 16:51:21 +0800
-- `cpu_attn_acc_locality` 新路径已从占位实现推进到首个可运行闭环：
-  - `csrc/cpu/cpu_attn_acc_locality_impl.hpp` 现在会构造新的 metadata header，并把 legacy `cpu_attention::AttentionMetadata` 作为嵌入 payload 保留下来；
-  - header 里新增 `subgroup_num / subgroup_thread_num / thread_to_group_id / thread_to_local_offset / kv_head_to_subgroup`，用于把 `kv_head` 绑定到 L3 子池；
-  - runtime 不再复用 legacy 的全局 atomic task 枚举，而是让每个线程只消费自己 subgroup 内对应的 legacy thread slots，并按 subgroup 过滤 reduction item。
-- 新增调试/测试可观测入口：`torch.ops._C_utils.inspect_cpu_attn_acc_locality_metadata(metadata)`，可直接看 `subgroup_num`、`legacy_effective_thread_num`、`kv_head_to_subgroup`、`attention_task_num`。
-- 到 `2026-04-03 16:50:17 +0800`，最小 smoke benchmark 已跑通：
-  - 命令：`python benchmarks/kernels/cpu/benchmark_cpu_attn_mp.py --tp-size 1 --workload decode-like --batch-size 1 --q-len 1 --kv-len 64 --iters 1 --attn-locality-mode acc-local-l3 --output-json /tmp/acc_locality_smoke.json`
-  - 结果里已写出 `attn_locality_mode=acc-local-l3`、`attn_locality_group_span=1` 和 `rank_results[0].locality_groups`；当前环境下 rank0 暴露出 8 个 L3 groups，每组 16 CPU。
-- 下一步若继续，不要先扩 heuristic；优先做任务 `54`，用 attention-only benchmark 真正比较 `balanced` vs `acc-local-l3` 的 latency/summary 输出，并决定这版 subgroup 映射是否值得继续扩展到 `group_span > 1`。
-2026-04-04 22:03:13 +0800
-- `acc-local-l3` 新 kernel 的实现说明文档已写入 `info/vllm_analysis/10_CPU_attention_acc_locality新kernel实现说明.md`，并已补到 `info/README.md` 与 `info/vllm_analysis/README.md`。
-- 文档覆盖范围：
-  - 为什么新增并行 kernel，而不是直接改 `cpu_attention_with_kv_cache`
-  - `ThreadLocalityManager`、`L3/CCX` 分组、metadata header 与 embedded legacy metadata 的关系
-  - runtime 如何把 `kv_head` 限制到 subgroup，并复用 subgroup 内的 legacy thread slots
-  - Python/backend/benchmark 的 mode 切换路径和当前 `group_span=1` 的边界
-- 任务 `54` 仍保持 `pending`；用户当前要求先停实验、先沉淀实现说明，因此后续若继续 benchmark，对照入口优先看该文档再回到 `benchmark_cpu_attn_mp.py`。
-2026-04-05 21:55:43 +0800
-- `info/experiment_ops/Qwen3-30B-A3B_attention-only_TP实验步骤.md` 已补 `acc-local-l3` 实验口径，结论是当前不需要修改 `benchmarks/kernels/cpu/benchmark_cpu_attn_mp.py`，也不需要新增脚本。
-- 文档里新增了 `run_attn_only_pcm_locality()` helper，专门在原 `run_attn_only_pcm` 口径上增加 `--attn-locality-mode` 与 `--attn-locality-group-span 1`，并把结果目录追加一层 `balanced/acc-local-l3`。
-- 当前推荐先跑 `NPS1_TP2 + global-fixed + prefill-like + batch=16 + q=kv=128/512` 的 `balanced` vs `acc-local-l3` 对照；这组命令已写进实验文档，可直接复制。
-2026-04-07 16:29:07 +0800
-- 已新增 `info/vllm_analysis/11_Qwen3-30B-A3B注意力KV工作集与32MiBL3容量估算.md`，用于把 `Qwen3-30B-A3B` 在本机 `32 MiB` 本地 L3 下的 KV 工作集理论容量和当前 `P2/NPS1_TP2` 实验转折区间放到同一口径下解释。
-- 当前文档结论边界：
-  - 理论容量只按“单层 attention 的 KV 大小”估算，不包含 Q tile、scratchpad、reduction buffer 等其他工作集
-  - 工程判断只绑定 `Qwen3-30B-A3B + 本机 32 MiB 本地 L3 slice + P2/NPS1_TP2/global-fixed/batch=16`
-  - 文档中把 `q/kv≈1024` 视为值得警惕的 L3 容量边界，依据是“理论估算 + `summary.md` 里 `same-node another CCX -> local memory` 的来源切换”共同支持，而不是单纯公式证明
+- `IBS` 来源级平均延迟口径依赖 `collect` 时显式带 `-e event=ibs-op,ibsop-l3miss=1,call-graph`。
+- 若后续升级 `AMDuProf` 版本，先复核 `AMDuProf_Collect_Help.txt`、`ibs_op_ld.json`、`ibs_op_ld_lat.json`、`0x1a_0x1.xml` 中的定义，再复用现有公式。

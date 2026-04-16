@@ -97,7 +97,7 @@ at::Tensor get_scheduler_metadata_acc_locality(
     int64_t num_req, int64_t num_heads_q, int64_t num_heads_kv,
     int64_t head_dim, const at::Tensor& seq_lens, at::ScalarType dtype,
     const at::Tensor& query_start_loc, bool casual, int64_t window_size,
-    const std::string& isa_hint, bool enable_kv_split) {
+    const std::string& isa_hint, bool enable_kv_split, int64_t group_span) {
   const cpu_attention::ISA isa = parse_cpu_attention_isa(isa_hint);
   int32_t max_num_q_per_iter = 0;
 
@@ -112,7 +112,7 @@ at::Tensor get_scheduler_metadata_acc_locality(
   return cpu_attention_acc_locality::build_scheduler_metadata(
       num_req, num_heads_q, num_heads_kv, head_dim, seq_lens, dtype,
       query_start_loc, casual, window_size, isa_hint, enable_kv_split,
-      max_num_q_per_iter);
+      max_num_q_per_iter, static_cast<int32_t>(group_span));
 }
 
 std::string inspect_cpu_attn_acc_locality_metadata(

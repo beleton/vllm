@@ -1,55 +1,7 @@
 {
     "project": "Chiplet CPU推理加速",
-    "updated_at": "2026-04-07 20:48:30 +0800",
+    "updated_at": "2026-04-16 14:02:52 +0800",
     "tasks": [
-        {
-            "id": "0",
-            "description": "示例",
-            "status": "completed",
-            "passes": true
-        },
-        {
-            "id": "1",
-            "description": "并行检查 info 文档记录完整性，并审查 strict_batch.py 是否存在错误",
-            "status": "completed",
-            "passes": true
-        },
-        {
-            "id": "2",
-            "description": "修复 info 文档中的悬空索引，删除不存在的入口引用",
-            "status": "completed",
-            "passes": true
-        },
-        {
-            "id": "3",
-            "description": "将现有 `info/README.md`、`info/experiment_ops/README.md`、`info/vllm_analysis/README.md` 统一改写为面向 AI 的精简路由文档",
-            "status": "completed",
-            "passes": true
-        },
-        {
-            "id": "4",
-            "description": "将 `info/README.md`、`info/experiment_ops/README.md`、`info/vllm_analysis/README.md` 进一步收缩为只保留文件索引",
-            "status": "completed",
-            "passes": true
-        },
-        {
-            "id": "5",
-            "description": "核对并改写 `info/进展.md` 的“当前进展”部分，按论文、源码和实验结果补齐证据边界",
-            "status": "completed",
-            "passes": true
-        },
-        {
-            "id": "6",
-            "description": "创建用于整理和维护 `info/` 目录索引与文档导航的项目级 subagent 配置文件",
-            "status": "completed",
-            "passes": true
-        },
-        {
-            "id": "7",
-            "description": "根据 `info/进展.md` 梳理下一步研究方向与实验计划，并写成便于后续接续的文档",
-            "status": "completed",
-            "passes": true
-        },
         {
             "id": "8",
             "description": "对 `decode_B16_I1_O1024` 与 `prefill_B16_I1024_O1` 运行 `AMDuProfCLI hotspots + IBS L3-miss`，补齐函数级归因证据",
@@ -63,404 +15,284 @@
             "passes": false
         },
         {
-            "id": "10",
-            "description": "编写复用真实 TP worker NUMA/OMP 绑定的 attention-only 多进程试验脚本，用 `AMDuProfPcm` 比较 `NPS1_TP2/NPS2_TP4/NPS4_TP8` 下的 L3 行为与性能，判断 attention kernel 的 locality 优化空间",
-            "status": "pending",
-            "passes": false
-        },
-        {
-            "id": "11",
-            "description": "为 `P0` 编写独立的 `AMDuProfCLI hotspots + IBS L3-miss` 实验文档，并挂到 `experiment_ops` 索引",
-            "status": "completed",
-            "passes": true
-        },
-        {
-            "id": "12",
-            "description": "审查 `Qwen3-30B-A3B_P0_AMDuProfCLI函数级归因实验步骤.md` 中 `AMDuProfCLI` 命令的正确性与 miss 归因证据充分性",
-            "status": "completed",
-            "passes": true
-        },
-        {
-            "id": "13",
-            "description": "核对并修正 `test_results/PD_Test/Qwen3-30B-A3B/PCm_res/2026-03-26_qwen3-30b-a3b_pd_pcm_summary.md` 的 PCM 汇总结论与指标表头",
-            "status": "completed",
-            "passes": true
-        },
-        {
-            "id": "14",
-            "description": "修订 `Qwen3-30B-A3B_P0_AMDuProfCLI函数级归因实验步骤.md`，补 `IBS` 视图并补充 `--show-percentage` 使用说明",
-            "status": "completed",
-            "passes": true
-        },
-        {
-            "id": "15",
-            "description": "修订 `Qwen3-30B-A3B_P0_AMDuProfCLI函数级归因实验步骤.md`，显式加入 steady-state 时间窗参数与 launcher 模式说明",
-            "status": "completed",
-            "passes": true
-        },
-        {
-            "id": "16",
-            "description": "修订 `Qwen3-30B-A3B_vllm_bench_Prefill_Decode实验步骤.md`，改为由 `AMDuProfPcm profile -- <PROGRAM>` 直接启动 `strict-batch` 以观察启动到稳定运行的时间窗",
-            "status": "completed",
-            "passes": true
-        },
-        {
-            "id": "17",
-            "description": "精简 `process.txt`，只保留跨任务仍需使用的交接信息，不重复记录已沉淀到 `info/` 下的结论",
-            "status": "completed",
-            "passes": true
-        },
-        {
-            "id": "18",
-            "description": "补充 `AMDuProfPcm` launcher 校准在 TP 场景下的挂起证据，并修订实验文档与交接说明",
-            "status": "completed",
-            "passes": true
-        },
-        {
-            "id": "19",
-            "description": "为 `2026-03-26_qwen3-30b-a3b_pd_pcm_summary.md` 的 prefill/decode 长度扫描补入 `L3 Access (pti)` 指标",
-            "status": "completed",
-            "passes": true
-        },
-        {
-            "id": "20",
-            "description": "从 `2026-03-26_qwen3-30b-a3b_pd_pcm_summary.md` 的 prefill/decode 长度扫描表中删除时间戳与 `CPI` 列",
-            "status": "completed",
-            "passes": true
-        },
-        {
-            "id": "21",
-            "description": "将 `2026-03-26_qwen3-30b-a3b_pd_pcm_summary.md` 的 prefill/decode 长度扫描表按输入长度/输出长度升序重排",
-            "status": "completed",
-            "passes": true
-        },
-        {
-            "id": "22",
-            "description": "优化一段用于后续大模型研究的提示词，要求其先基于 `info/进展.md` 建立上下文，再比较 AMD/Intel chiplet CPU 架构差异、矩阵乘法特性，并评估 L3 感知数据放置与 AMX 是否正交",
-            "status": "completed",
-            "passes": true
-        },
-        {
-            "id": "23",
-            "description": "基于 `info/进展.md` 建立上下文，检索 AMD/Intel chiplet CPU 架构与矩阵乘法能力资料，分析 L3 感知数据放置与 AMX 是否正交，并形成研究文档",
-            "status": "completed",
-            "passes": true
-        },
-        {
-            "id": "24",
-            "description": "为 chiplet/NUMA/分片缓存相关工作检索建立任务链与本地文档骨架。主入口为 `info/ai-research/相关工作/README.md`，正式结果写入 `info/ai-research/相关工作/2026-03-31_chiplet_llm_相关工作检索清单.md`，候选池写入 `info/ai-research/相关工作/2026-03-31_chiplet_llm_相关工作候选池.md`。后续任务统一以这些文档作为交接入口。",
-            "status": "completed",
-            "passes": true
-        },
-        {
-            "id": "25",
-            "description": "第一轮广覆盖检索。开始前先读 `info/进展.md`、`tasks.json`、`process.txt`、`info/README.md`、`info/ai-research/相关工作/README.md`、正式清单和候选池。联网尽量全地建立候选资料池，优先一手来源；原始搜索结果保存到 `sources/`，候选条目追加到候选池文档。完成后在正式清单的“任务交接/下一步”中写明：已覆盖方向、命中较少方向、建议下一任务补检的关键词。",
-            "status": "completed",
-            "passes": true
-        },
-        {
-            "id": "26",
-            "description": "第二轮补漏检索。开始前先读与任务 25 相同的入口文件，并重点阅读候选池和正式清单中的“任务交接/下一步”。针对命中较少或空白方向补检，至少覆盖：LLM+chiplet CPU、attention/KV 共享工作集、multi-die GPU/GPU NUMA、分片 LLC/拓扑感知调度。继续将原始结果保存到 `sources/`，对候选池做去重和补充；完成后在正式清单的“任务交接/下一步”中写明剩余缺口和推荐阅读优先级草案。",
-            "status": "completed",
-            "passes": true
-        },
-        {
-            "id": "27",
-            "description": "整理最终资料清单。开始前先读前两轮产物与正式清单中的交接区。从候选池筛出有效资料，按“最直接相关：LLM 推理 + chiplet/NUMA/分片缓存”“高相关方法启发：attention / KV / 拓扑感知放置”“相近硬件启发：multi-die GPU / GPU NUMA / 分片 LLC”“背景与系统方法：NUMA-aware / cache-aware / topology-aware runtime”四类写入正式清单，并给出“哪些方向资料最多，哪些方向最缺”“哪几篇/哪几类资料最值得先读”两项总结。完成后将正式清单作为该主题的主交接文档。",
-            "status": "completed",
-            "passes": true
-        },
-        {
-            "id": "28",
-            "description": "基于 `info/进展.md` 与 `info/实验记录/2026-03-30_下一步研究计划.md` 梳理 chiplet 架构下 L3 指标关注重点，并给出高 L3 Miss 的归因判据与优化判断边界",
-            "status": "completed",
-            "passes": true
-        },
-        {
-            "id": "29",
-            "description": "诊断 `strict-batch` 在 CPU TP=2 场景下的 `create shm in SHMManager failed. errno: 17`，确认是否为 `/dev/shm` 残留 `cpushm` 命名冲突并给出处置口径",
-            "status": "completed",
-            "passes": true
-        },
-        {
-            "id": "30",
-            "description": "补强 `info/ai-research/2026-03-31_AMD_Intel_Chiplet_LLM_AMX_L3研究.md` 中 Intel chiplet / tile / disaggregated CPU 介绍，明确 `tile`、`SNC`、`LLC slice` 与 `compute/I/O tiles` 的层次关系",
-            "status": "completed",
-            "passes": true
-        },
-        {
-            "id": "31",
-            "description": "诊断 `2026-04-01` 当前 `Qwen3-30B-A3B NPS1_TP2` 性能相对 `2026-03-11` 历史批次显著回退的原因，并确认是否为负载变化还是本地 Debug 构建导致",
-            "status": "completed",
-            "passes": true
-        },
-        {
-            "id": "32",
-            "description": "在 `Qwen3-30B-A3B_P0_AMDuProfCLI函数级归因实验步骤.md` 中补充按最新 session 自动导出 `session.tar.gz` 供 Windows GUI 导入的 `translate --export-session` 命令",
-            "status": "completed",
-            "passes": true
-        },
-        {
-            "id": "33",
-            "description": "整理 `test_results/PD_Test/Qwen3-30B-A3B/CLI_res` 下 `Qwen3-30B-A3B P0` 的 `hotspots + IBS L3-miss` 结果，并按本地新式文档写入结果汇总",
-            "status": "completed",
-            "passes": true
-        },
-        {
-            "id": "34",
-            "description": "基于 `test_results/PD_Test/Qwen3-30B-A3B/CLI_res/2026-04-01_qwen3-30b-a3b_p0_cli_results.md` 分析 `Qwen3-30B-A3B P0` 的函数级归因结果，给出 `decode/prefill` 差异与后续实验建议",
-            "status": "completed",
-            "passes": true
-        },
-        {
             "id": "35",
             "description": "实现 `attention-only` 多进程 TP benchmark 脚本，复用 `CPUWorker.init_device()` 的 NUMA/OMP 绑核逻辑，支持 `global-fixed/per-rank-fixed` 两套 head 切分口径，并保留 `decode-like/prefill-like` 统一输入路径",
             "status": "completed",
             "passes": true
         },
         {
-            "id": "36",
-            "description": "为 `benchmark_cpu_attn_mp.py` 补 `P2` 实验文档，说明脚本用法、当前 NUMA/NPS 口径边界，并给出可直接复制执行的 `AMDuProfPcm` 下一步实验命令",
-            "status": "completed",
-            "passes": true
-        },
-        {
-            "id": "37",
-            "description": "补跑 `P2` 的 `NPS1_TP2` `attention-only` `global-fixed` 首轮 `decode-like/prefill-like` 实验，并将 `AMDuProfPcm` 结果整理到 `test_results/P2_AttnOnly/Qwen3-30B-A3B/NPS1_TP2`",
-            "status": "completed",
-            "passes": true
-        },
-        {
-            "id": "38",
-            "description": "修正 `benchmark_cpu_attn_mp.py` 的 PCM 运行口径：新增 `--min-runtime-s` 并与 `--iters` 互斥，避免长 steady-state 采样依赖手工估算迭代数；同步修订 `P2` 实验文档与短 session 结果说明",
-            "status": "completed",
-            "passes": true
-        },
-        {
-            "id": "39",
-            "description": "修订 `P2` 实验文档中的 PCM helper 语义：去掉 `guard_s`，改为显式区分 `pcm_duration_s` 与 `benchmark_min_runtime_s`，并验证 `benchmark_min_runtime_s > pcm_duration_s` 的 launcher 口径可行",
-            "status": "completed",
-            "passes": true
-        },
-        {
-            "id": "40",
-            "description": "为 `benchmark_cpu_attn_mp.py` 增加 `--input-len/--output-len` 参数，补齐与 `B/I/O` 实验口径对齐的长度映射，并更新 `P2` 实验文档与测试",
-            "status": "completed",
-            "passes": true
-        },
-        {
-            "id": "41",
-            "description": "把 `P2` attention-only 结果目录规范收敛为显式包含 `batch_size` 与解析后的 `q_len/kv_len`，并让脚本 summary 返回对应的 `result_shape_dirname` 供外部 wrapper 复用",
-            "status": "completed",
-            "passes": true
-        },
-        {
-            "id": "42",
-            "description": "将 `P2` attention-only 脚本、helper、结果目录和文档接口统一收敛为 `q_len/kv_len`，移除 `input_len/output_len` 这层命名与参数",
-            "status": "completed",
-            "passes": true
-        },
-        {
-            "id": "43",
-            "description": "为 `P2_AttnOnly/Qwen3-30B-A3B/NPS1_TP2` 编写通用 PCM 结果整理与出图脚本，统一提取 `L3 Access/Miss/Latency` 及 miss latency 组成指标，导出汇总表与图像",
-            "status": "completed",
-            "passes": true
-        },
-        {
-            "id": "44",
-            "description": "将 `P2` 通用出图脚本中的 `l3_latency_breakdown` 从面积图改为按每个 `q_len/kv_len` case 绘制的堆叠柱状图",
-            "status": "completed",
-            "passes": true
-        },
-        {
-            "id": "45",
-            "description": "编写 `AMDuProfCLI IBS` 来源延迟采样文档，给出 `another CCX cache` 与 `local memory` 平均访问延迟的采样命令、结果查看方式与计算公式",
-            "status": "completed",
-            "passes": true
-        },
-        {
-            "id": "46",
-            "description": "阅读 `info/papers/ARCAS.pdf` 与 `info/papers/Optimizing Sorting for Chiplet-Based CPUs.pdf`，核对两文是否都认为跨 CCD 的 L3 访问比本地 DRAM 更快",
-            "status": "completed",
-            "passes": true
-        },
-        {
-            "id": "47",
-            "description": "把 `P2/NPS1_TP2` 的阶段性判断和后续实验优先级补回 `info/进展.md`，明确当前覆盖边界与仍需补跑的配置",
-            "status": "completed",
-            "passes": true
-        },
-        {
-            "id": "48",
-            "description": "基于 `info/进展.md` 的观察 5 和 `GPU_Attention_NUMA_Optimization.pdf`，阅读现有 CPU attention kernel 与实验结果，梳理不写代码的拓扑感知优化实现思路",
-            "status": "completed",
-            "passes": true
-        },
-        {
-            "id": "49",
-            "description": "基于已确认的 CPU attention 拓扑感知优化路线，细化到具体源码模块与测试入口，写出可执行的实现计划文档",
-            "status": "completed",
-            "passes": true
-        },
-        {
-            "id": "50",
-            "description": "根据用户新增约束修订 CPU attention locality 计划：不直接修改原有 `cpu_attention_with_kv_cache` kernel，改为新增并行的新 kernel/op 路径实现",
-            "status": "completed",
-            "passes": true
-        },
-        {
-            "id": "51",
-            "description": "在 `vllm-cpu` 环境继续执行 CPU attention locality 计划，先补 Python 侧 `L3/CCX` 拓扑字段与分组 helper，并处理新 kernel 测试所需的环境/构建问题",
-            "status": "completed",
-            "passes": true
-        },
-        {
-            "id": "52",
-            "description": "继续 CPU attention locality 计划：为 attention benchmark 新增 `attn_locality_mode/group_span` 开关、rank locality 摘要，并在 C++ utils 层补 `describe_cpu_locality_groups` 与线程 locality cache，为后续新 kernel 调度实现打基础",
-            "status": "completed",
-            "passes": true
-        },
-        {
-            "id": "53",
-            "description": "继续 CPU attention locality 计划：在新增的 `cpu_attn_acc_locality` kernel/op 路径里实现基于 L3 线程子池的 scheduler metadata 与 runtime task 枚举，保持旧 kernel 默认路径不变",
-            "status": "completed",
-            "passes": true
-        },
-        {
-            "id": "54",
-            "description": "基于新的 `cpu_attn_acc_locality` kernel/op 路径做首轮 benchmark 对照与结果落盘，优先验证 `acc-local-l3` 在 attention-only 脚本中的可观测性与性能变化，再决定是否继续扩展 group-span/heuristic",
+            "id": "10",
+            "description": "基于已落地的 attention-only 多进程 TP benchmark，用 `AMDuProfPcm` 补齐 `NPS1_TP2/NPS2_TP4/NPS4_TP8` 的 `global-fixed/per-rank-fixed` 对照，判断 attention kernel 的 locality 优化空间",
             "status": "pending",
             "passes": false
         },
         {
-            "id": "55",
-            "description": "对 `info/ai-research/相关工作` 下的论文做二次筛选与总结，并结合 `info/进展.md` 给出高可行研究方向，结果写入新文档并补索引",
+            "id": "149",
+            "description": "按多-subgroup 联合线程池方案修正 `cpu_attn_acc_locality` 的 `group_span` 执行：同一 `kv_head` 覆盖多个 subgroup 时对 legacy slot / reduction item 做唯一分片而不是重复执行，并补对应单测与最小 benchmark 验证",
             "status": "completed",
             "passes": true
         },
         {
-            "id": "56",
-            "description": "编写 `acc-local-l3` 新 CPU attention kernel 的实现说明文档，覆盖设计约束、metadata/runtime 核心逻辑、Python 接入路径，并补 `info` 索引",
+            "id": "150",
+            "description": "汇总 `test_results/P3_AttnOnly/Qwen3-30B-A3B/NPS1_TP2/prefill-like/global-fixed/batch_16` 下 `balanced_span4` 与 `acc-local-l3_span4` 的 dry-run 和 PCM 结果，形成当前 `NPS1_TP2` 首轮对照结论",
             "status": "completed",
             "passes": true
         },
         {
-            "id": "57",
-            "description": "更新 `attention-only TP` 实验文档，补 `acc-local-l3` 与 `balanced` 对照命令，并明确最小改动方案是不修改 benchmark 脚本",
+            "id": "209",
+            "description": "修订 `wiki/资料总览/Chiplet架构下L3指标关注重点与高L3Miss归因边界.md`，把 `Demand DC Fills` 等局部性指标纳入主判据，并按访问量/代价/外溢层级重写归因边界",
             "status": "completed",
             "passes": true
         },
         {
-            "id": "58",
-            "description": "下载 `2026-04-04_相关工作论文筛选与研究方向建议.md` 中第一层主线深读的 8 篇论文到本地 `info/papers/`，并记录缺失项",
-            "status": "completed",
-            "passes": true
-        },
-        {
-            "id": "59",
-            "description": "精读 `ArcLight`，输出到 `info/ai-research/相关工作/精读/2026-04-07_ArcLight精读.md`；重点提炼 CPU LLM 推理的线程/内存/TP 设计、实验平台、证据边界，并对照当前课题写可迁移点与不可直接迁移点",
-            "status": "completed",
-            "passes": true
-        },
-        {
-            "id": "60",
-            "description": "精读 `CHARM`，输出到 `info/ai-research/相关工作/精读/2026-04-07_CHARM精读.md`；重点提炼 `LocalCache/DistributedCache` 切换条件、chiplet runtime 映射策略、实验平台与证据边界，并对照当前课题写可迁移点与不可直接迁移点",
+            "id": "228",
+            "description": "在固定 `NPS1_TP2/global-fixed` 拓扑下补更密长度点，优先覆盖 `prefill q=512 -> 1024` 与 `decode kv=1024 -> 2048`，继续验证 locality mode 切换边界",
             "status": "pending",
             "passes": false
         },
         {
-            "id": "61",
-            "description": "精读 `Sandwich`，输出到 `info/ai-research/相关工作/精读/2026-04-07_Sandwich精读.md`；重点提炼 `prefill/decode` 分相编译与 NUMA 策略差异，并对照当前 `Prefill/Decode` 实验结果写映射",
-            "status": "pending",
-            "passes": false
-        },
-        {
-            "id": "62",
-            "description": "精读 `Optimizing Attention on GPUs by Exploiting GPU Architectural NUMA Effects`，输出到 `info/ai-research/相关工作/精读/2026-04-07_GPU_Attention_NUMA精读.md`；重点提炼 `ACC` 定义、映射策略、收益来源，并对照当前 CPU prefill `kv_head` 局部性写映射",
-            "status": "pending",
-            "passes": false
-        },
-        {
-            "id": "63",
-            "description": "精读 `Hydragen`，输出到 `info/ai-research/相关工作/精读/2026-04-07_Hydragen精读.md`；重点提炼 shared-prefix 工作集定义、系统实现与证据边界，并对照当前课题写映射",
-            "status": "pending",
-            "passes": false
-        },
-        {
-            "id": "64",
-            "description": "精读 `ChunkAttention`，输出到 `info/ai-research/相关工作/精读/2026-04-07_ChunkAttention精读.md`；重点提炼 prefix-aware KV cache、two-phase partition 与 locality 机制，并对照当前课题写映射",
-            "status": "pending",
-            "passes": false
-        },
-        {
-            "id": "65",
-            "description": "精读 `ARCAS`，输出到 `info/ai-research/相关工作/精读/2026-04-07_ARCAS精读.md`；重点提炼局部 cache 延迟与聚合 cache 容量的权衡条件，并对照当前课题写映射",
-            "status": "pending",
-            "passes": false
-        },
-        {
-            "id": "66",
-            "description": "精读 `Optimizing Sorting for Chiplet-Based CPUs`，输出到 `info/ai-research/相关工作/精读/2026-04-07_OptimizingSorting精读.md`；重点提炼数据规模与本地/聚合 L3 的关系，并对照当前课题写映射",
-            "status": "pending",
-            "passes": false
-        },
-        {
-            "id": "67",
-            "description": "在完成任务 `59-66` 后，汇总 8 篇论文的共同结论、矛盾点与对当前课题最直接的研究启发，输出到 `info/ai-research/相关工作/精读/2026-04-07_主线论文精读总汇.md`，并回写 `相关工作` 入口索引",
-            "status": "pending",
-            "passes": false
-        },
-        {
-            "id": "68",
-            "description": "为 `acc-local-l3` CPU attention kernel 增加受环境变量控制的 runtime 任务划分日志，并给出可直接复现的运行命令",
+            "id": "229",
+            "description": "修订 `wiki/术语与背景/AMDuProfPcm指标介绍.md`，将 `CPI (Sys/User)` 与 `IPC (Sys/User)` 统一收敛到 Batch 1，去掉后续 batch 的重复说明",
             "status": "completed",
             "passes": true
         },
         {
-            "id": "69",
-            "description": "整理 `Qwen3-30B-A3B` 在本机 `32 MiB` 本地 L3 下的 attention KV 工作集容量估算，并写入 `info/vllm_analysis` 文档，补充索引入口",
+            "id": "230",
+            "description": "修订 `wiki/术语与背景/L3捕获流程.md`，补充“不能直接得到纯本地L3 hit延迟、最近似口径仅为 same-CCX local-cache hit latency (IBS)”的边界说明",
             "status": "completed",
             "passes": true
         },
         {
-            "id": "70",
-            "description": "修订 `Qwen3-30B-A3B_attention-only_TP实验步骤.md` 中 locality 对照实验命令，统一为 `balanced/acc-local-l3` 成对执行口径，并修正 helper 示例里的参数传递",
+            "id": "231",
+            "description": "拆分 `wiki/术语与背景/AMDuProfPcm指标介绍.md` 与 `wiki/术语与背景/L3捕获流程.md`，将 `Batch 2 补充` 等 `L3` 捕获链路内容独立整理，并同步修正文档引用",
             "status": "completed",
             "passes": true
         },
         {
-            "id": "71",
-            "description": "分析 `P3_AttnOnly/Qwen3-30B-A3B` 下 `q128_kv128/q512_kv512` 的 `balanced` 与 `acc-local-l3` 对照结果，判断新 kernel 是否真正带来性能提升，并给出基于日志/PCM/源码的解释",
+            "id": "232",
+            "description": "合并 `wiki/实验方案/Qwen3-30B-A3B_IBS来源延迟采样实验步骤.md` 与 `wiki/术语与背景/L3捕获流程.md`，整理为 `wiki/术语与背景/访存延迟测量.md` 并同步修正文档入口",
             "status": "completed",
             "passes": true
         },
         {
-            "id": "72",
-            "description": "解释 `acc-local-l3` 路径中为什么 `attention task` 数会显著少于 legacy 路径，并将原因对应到 `TP2` 实验 local shape 与源码公式",
+            "id": "233",
+            "description": "联网补充 `wiki/术语与背景/访存延迟测量.md` 的基础知识，新增 load 访问链路、排队/合并点，以及 `Intel MLC`、`lmbench lat_mem_rd`、`core-to-core latency` 的测量边界说明",
             "status": "completed",
             "passes": true
         },
         {
-            "id": "73",
-            "description": "说明如何查看 `acc-local-l3` metadata 中的 `legacy_effective_thread_num` 与 `attention_task_num`，并给出可直接运行的命令",
+            "id": "234",
+            "description": "细化 `wiki/术语与背景/访存延迟测量.md` 中 `Intel MLC` 口径，先定义 `pointer chasing`，再说明其在 `idle latency` 中用于压低测量线程自身并发与预取干扰的作用",
             "status": "completed",
             "passes": true
         },
         {
-            "id": "74",
-            "description": "解释 benchmark runtime log 中为何只能看到 `legacy_effective_thread_num` 而看不到 `attention_task_num`，并给出当前可用的查看办法",
+            "id": "235",
+            "description": "收紧 `wiki/术语与背景/访存延迟测量.md` 的措辞，去掉“不是…而是…”式绕行表述，改为直接正述 `pointer chasing` 的目的",
             "status": "completed",
             "passes": true
         },
         {
-            "id": "75",
-            "description": "在 `acc-local-l3` runtime summary 中补充 `attention_task_num` 与 `legacy_attention_task_num` 日志，并用单测验证输出字段可见",
+            "id": "236",
+            "description": "继续收紧 `wiki/术语与背景/访存延迟测量.md` 的语言风格：术语首次出现即解释，叙述部分尽量中文化，去掉未解释的中英混杂表达如 `dependent reads`、`latency thread`、`delay`、`workload-conditioned`",
             "status": "completed",
             "passes": true
         },
         {
-            "id": "76",
-            "description": "参考 karpathy 的 `llm-wiki`，评估当前 `info/` 文档库是否适合在无 GUI 环境下演进为 wiki，并形成带证据的可行性文档",
+            "id": "237",
+            "description": "把用户刚确认的文档语言约束整理进 `AGENTS.md`：叙述默认中文、术语首次出现即解释、常见通用术语可保留英文、避免中英生硬混写与“不是……而是……”式绕行句",
+            "status": "completed",
+            "passes": true
+        },
+        {
+            "id": "238",
+            "description": "将 `AGENTS.md` 中新增的文档写作规范进一步收缩为更通用、更简洁的版本，去掉过于具体的例子式约束",
+            "status": "completed",
+            "passes": true
+        },
+        {
+            "id": "239",
+            "description": "将 `PCM/IBS` 测得的是当前 `workload` 和系统状态下、包含排队与仲裁在内的来源级观测延迟或延迟贡献这一句补入 `wiki/术语与背景/访存延迟测量.md` 的边界说明",
+            "status": "completed",
+            "passes": true
+        },
+        {
+            "id": "240",
+            "description": "将跨 `CCD` 的远端 `cache` 读与 `core-to-core latency` 的路径差异补入 `wiki/术语与背景/访存延迟测量.md`，并补充 Intel 官方 `MLC` 的常用延迟测量命令",
+            "status": "completed",
+            "passes": true
+        },
+        {
+            "id": "241",
+            "description": "根据当前机器的 `L1/L2/L3` 容量为 `wiki/术语与背景/访存延迟测量.md` 中的 `MLC --idle_latency` 显式指定工作集大小，并补明 `--c2c_latency` 的作用",
+            "status": "completed",
+            "passes": true
+        },
+        {
+            "id": "242",
+            "description": "把当前机器 `L1/L2/本地L3/本地内存` 与跨 `CCD` 远端 `cache` 路径的可采用延迟量级补入 `wiki/术语与背景/访存延迟测量.md`",
+            "status": "completed",
+            "passes": true
+        },
+        {
+            "id": "243",
+            "description": "精简 `wiki/术语与背景/访存延迟测量.md` 的表述，并把“跨 `CCD` 远端 `cache/L3` 路径延迟已接近本地内存量级”写回文档",
+            "status": "completed",
+            "passes": true
+        },
+        {
+            "id": "244",
+            "description": "将 `wiki/术语与背景/访存延迟测量.md` 中“不能写成/可以写成”式边界表述改为直接陈述句",
+            "status": "completed",
+            "passes": true
+        },
+        {
+            "id": "245",
+            "description": "将当前机器与 Rome 论文中“跨 `CCD` 远端 `cache/L3` 路径远高于本地 `L3`、接近甚至可能高于本地内存”的观察整理进 `wiki/资料总览/当前研究主线.md`",
+            "status": "completed",
+            "passes": true
+        },
+        {
+            "id": "246",
+            "description": "删除 `wiki/资料总览/info目录迁移与归档说明.md`，并清理 `wiki` 文档入口中的相关引用",
+            "status": "completed",
+            "passes": true
+        },
+        {
+            "id": "247",
+            "description": "删除冗长的 `wiki/实验结果解读/2026-04-13_Qwen3-30B-A3B_P3_AttnOnly_balanced指标深度分析.md`，改写 `summary.csv` 的精简分析文档并更新实验结果解读入口",
+            "status": "completed",
+            "passes": true
+        },
+        {
+            "id": "248",
+            "description": "修改 `tools/p3_attn_only/pcm_compare.py`，将 `IPC/CPI (Sys + User/Sys/User)` 纳入 `summary.csv`、`compare_summary.csv`、`detail_summary.csv` 与 `summary.md`，并补对应回归测试",
+            "status": "completed",
+            "passes": true
+        },
+        {
+            "id": "249",
+            "description": "把新增 `IPC` 口径下对 `P3_AttnOnly/NPS1_TP2/prefill-like/global-fixed/batch_16/summary.csv` 的反直觉延迟解释整理进实验结果解读文档",
+            "status": "completed",
+            "passes": true
+        },
+        {
+            "id": "250",
+            "description": "进一步收紧 `wiki/实验结果解读/2026-04-15_Qwen3-30B-A3B_P3_AttnOnly_NPS1_TP2_prefill_batch16_summary分析.md` 的措辞，去掉“当前数据支持的最稳解释是”这类冗余引导语",
+            "status": "completed",
+            "passes": true
+        },
+        {
+            "id": "251",
+            "description": "继续精简 `wiki/实验结果解读/2026-04-15_Qwen3-30B-A3B_P3_AttnOnly_NPS1_TP2_prefill_batch16_summary分析.md` 中 `核心结论` 段，压缩重复表述",
+            "status": "completed",
+            "passes": true
+        },
+        {
+            "id": "252",
+            "description": "确认 `wiki/术语与背景/访存延迟测量.md` 中自定义 `PCM` 口径足以补测来源级平均 `L3 miss` 延迟，并在 `wiki/实验方案/Qwen3-30B-A3B_attention-only_TP实验步骤.md` 补充 `NPS1_TP2/global-fixed` 可直接运行命令",
+            "status": "completed",
+            "passes": true
+        },
+        {
+            "id": "253",
+            "description": "将 `NPS1_TP2/global-fixed` 自定义 `PCM` 命令进一步补成同时输出 `IPC/CPI` 的版本，避免 `Collect \"ipc\" along with \"l3\"` 提示",
+            "status": "completed",
+            "passes": true
+        },
+        {
+            "id": "254",
+            "description": "将自定义 `PCM XML` 改为直接写到 `test_results/amduprof_pcm_l3_source_latency.conf`，并删除实验步骤文档中的 `prepare_pcm_l3_source_latency_xml()` 包装函数",
+            "status": "completed",
+            "passes": true
+        },
+        {
+            "id": "255",
+            "description": "参考 `tools/p3_attn_only/pcm_compare.py` 新增 `pcm_l3_source_latency_compare.py`，汇总 `batch_16` 下各个 `pcm_l3_source_latency_raw` 的 `report-cumulative.csv` 并生成 CSV 表格",
+            "status": "completed",
+            "passes": true
+        },
+        {
+            "id": "256",
+            "description": "结合新增 `summary_l3_source_latency.csv` 重审并更新 `wiki/实验结果解读/2026-04-15_Qwen3-30B-A3B_P3_AttnOnly_NPS1_TP2_prefill_batch16_summary分析.md`，补齐来源级 `L3 miss` 延迟拆解并修正结论",
+            "status": "completed",
+            "passes": true
+        },
+        {
+            "id": "257",
+            "description": "调整 `tools/p3_attn_only/pcm_l3_source_latency_compare.py` 的转置汇总输出，删除 `summary_l3_source_latency.csv` 中的 `case_dir` 行并补回归测试",
+            "status": "completed",
+            "passes": true
+        },
+        {
+            "id": "258",
+            "description": "将“避免使用 `更准确的写法是`、`对旧文档结论的修正` 等元话语式引导，更新旧结论时直接改写正文”补入 `AGENTS.md`",
+            "status": "completed",
+            "passes": true
+        },
+        {
+            "id": "259",
+            "description": "在 `test_results/amduprof_pcm_l3_source_latency.conf` 中补入 `L3 Access/L3 Miss` 及其 `pti/ratio` 指标",
+            "status": "completed",
+            "passes": true
+        },
+        {
+            "id": "260",
+            "description": "修复 `test_results/amduprof_pcm_l3_source_latency.conf` 中 `L3 Access/Miss (pti)` 的失真：改用官方 `$RetdInstL3` 口径并补入原始退休指令事件 `$RetdInst2`，增加配置回归测试",
+            "status": "completed",
+            "passes": true
+        },
+        {
+            "id": "261",
+            "description": "继续更新 `wiki/实验结果解读/2026-04-15_Qwen3-30B-A3B_P3_AttnOnly_NPS1_TP2_prefill_batch16_summary分析.md`，补入“短 `q` 的 `Local L2` fill 变化来自调度映射而非显式 `L2` 优化”与“长 `q` 的 slowdown 已定位到执行效率层且源码上可见 `balanced/acc-local-l3` 的动态调度差异”",
+            "status": "completed",
+            "passes": true
+        },
+        {
+            "id": "262",
+            "description": "更新 `wiki/源码分析/CPU_attention并行计算过程_线程任务workitem与tile.md`，补入 `workitem_group.q_token_num` 不均衡与 `total_kv_len/workitem` 划分逻辑",
+            "status": "completed",
+            "passes": true
+        },
+        {
+            "id": "263",
+            "description": "分析 `P3_AttnOnly/NPS1_TP2/global-fixed` 下 `kv_head16` 的 `acc-local-l3` 相对 `balanced` 在长 `q` 退化的原因，结合 `summary.csv`、单次日志与源码给出基于事实的归因",
+            "status": "completed",
+            "passes": true
+        },
+        {
+            "id": "264",
+            "description": "继续更新 `wiki/源码分析/CPU_attention并行计算过程_线程任务workitem与tile.md`，补入 `workitem_group` 按可见 `KV` 区间对齐长度累计、runtime 真实读取范围与 `mask` 边界",
+            "status": "completed",
+            "passes": true
+        },
+        {
+            "id": "265",
+            "description": "修订 `wiki/源码分析/CPU_attention并行计算过程_线程任务workitem与tile.md` 中 `12.2 scheduler 先生成多少 workitems` 的例子，明确各个 workitem 的 q 范围不等长，切分依据是累计 `total_kv_len` 而不是平均分配 q token",
+            "status": "completed",
+            "passes": true
+        },
+        {
+            "id": "266",
+            "description": "继续更新 `wiki/源码分析/CPU_attention并行计算过程_线程任务workitem与tile.md`，补入 request 与逻辑线程桶不是一一对应、日志中的 `thread N` 实际对应逻辑桶编号的说明",
+            "status": "completed",
+            "passes": true
+        },
+        {
+            "id": "267",
+            "description": "更新 `wiki/实验结果解读/2026-04-15_Qwen3-30B-A3B_P3_AttnOnly_NPS1_TP2_prefill_batch16_summary分析.md`，补入小 `batch` 下 `balanced` 理论上更易恶化 locality、因此更可能为 `acc-local-l3` 提供收益空间的机制边界，并基于现有证据判断是否应继续修改 `acc` 调度代码",
+            "status": "completed",
+            "passes": true
+        },
+        {
+            "id": "268",
+            "description": "继续更新 `wiki/实验结果解读/2026-04-15_Qwen3-30B-A3B_P3_AttnOnly_NPS1_TP2_prefill_batch16_summary分析.md`，补入“`balanced` 抢的是任务而非数据、`acc-local-l3` 固定的是任务资格，因此 locality 优势仍可能被动态均衡收益反超”的调度层归因",
+            "status": "completed",
+            "passes": true
+        },
+        {
+            "id": "269",
+            "description": "分析 `acc-local-l3` 在什么测试配置下可以让每个 CCD 的线程数与 legacy slot 切分同时更对称，并给出验证 locality 净收益的最小实验配置",
             "status": "completed",
             "passes": true
         }

@@ -1,0 +1,12 @@
+# 实验方案
+- [DeepSeek-R1-Distill-Llama-8B_NPS实验步骤.md](./DeepSeek-R1-Distill-Llama-8B_NPS实验步骤.md)：历史 `NPS/TP` 复现实验口径与边界
+- [DeepSeek-R1-Distill-Llama-8B_AMDuProfPcm分批实验命令.md](./DeepSeek-R1-Distill-Llama-8B_AMDuProfPcm分批实验命令.md)：`NPS4_TP8` 下 `AMDuProfPcm` 六批采样命令附录
+- [Qwen3-30B-A3B_attention-only_TP实验步骤.md](./Qwen3-30B-A3B_attention-only_TP实验步骤.md)：`attention-only` 多进程 TP 脚本、参数口径和 `AMDuProfPcm` 采样用法
+- [Qwen3-30B-A3B_bfloat16统一口径与重跑清单.md](./Qwen3-30B-A3B_bfloat16统一口径与重跑清单.md)：统一 `bfloat16` 口径后哪些正式实验需要重跑
+- [Qwen3-30B-A3B_AMDuProfPcm分批实验命令.md](./Qwen3-30B-A3B_AMDuProfPcm分批实验命令.md)：`NPS1_TP2` 下 `AMDuProfPcm` 六批采样命令附录
+- [Qwen3-30B-A3B_vllm_bench_Prefill_Decode实验步骤.md](./Qwen3-30B-A3B_vllm_bench_Prefill_Decode实验步骤.md)：`strict-batch` 下拆 `prefill/decode` 的 `PCM` 实验口径
+- [Qwen3-30B-A3B_P0_AMDuProfCLI函数级归因实验步骤.md](./Qwen3-30B-A3B_P0_AMDuProfCLI函数级归因实验步骤.md)：`hotspots + IBS L3-miss` 的函数级归因口径
+- [../术语与背景/访存延迟测量.md](../术语与背景/访存延迟测量.md)：`PCM L3 source latency` 与 `IBS` 来源延迟反推的统一口径
+- [Qwen3-30B-A3B_strict-batch_attention调试.md](./Qwen3-30B-A3B_strict-batch_attention调试.md)：`strict-batch` 下如何断到 CPU attention worker
+- [Qwen3-30B-A3B_strict-batch_gdb调试附录.md](./Qwen3-30B-A3B_strict-batch_gdb调试附录.md)：`strict-batch` attach `Worker_TP` 的最小 `gdb` 命令集
+- [Qwen3-30B-A3B_attention-only_TP_gdbserver调试.md](./Qwen3-30B-A3B_attention-only_TP_gdbserver调试.md)：`dry_run_attn_only` 下用 `gdbserver` 调 `AttentionMainLoop` 的可复制命令

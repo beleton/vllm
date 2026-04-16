@@ -91,7 +91,7 @@ torch::Tensor get_scheduler_metadata_acc_locality(
     const torch::Tensor& seq_lens, at::ScalarType dtype,
     const torch::Tensor& query_start_loc, const bool casual,
     const int64_t window_size, const std::string& isa_hint,
-    const bool enable_kv_split);
+    const bool enable_kv_split, const int64_t group_span);
 
 void cpu_attn_reshape_and_cache(const torch::Tensor& key,
                                 const torch::Tensor& value,
@@ -310,7 +310,7 @@ TORCH_LIBRARY_EXPAND(TORCH_EXTENSION_NAME, ops) {
       "get_scheduler_metadata_acc_locality(int num_req, int num_heads_q, int "
       "num_heads_kv, int head_dim, Tensor seq_lens, ScalarType dtype, Tensor "
       "query_start_loc, bool casual, int window_size, str isa_hint, bool "
-      "enable_kv_split) -> Tensor",
+      "enable_kv_split, int group_span) -> Tensor",
       &get_scheduler_metadata_acc_locality);
   ops.def(
       "cpu_attn_reshape_and_cache(Tensor key, Tensor value, Tensor(a2!) "

@@ -4,7 +4,7 @@
 - `AMDuProf_context.md`：计数器与 PCM 指标速记
 - `ai-research/2026-03-31_AMD_Intel_Chiplet_LLM_AMX_L3研究.md`：AMD/Intel chiplet CPU、AMX 与 L3 感知数据放置研究笔记
 - `ai-research/相关工作/README.md`：chiplet/NUMA/分片缓存相关工作检索入口与交接约定
-- `ai-research/相关工作/2026-04-04_相关工作论文筛选与研究方向建议.md`：对相关工作中的论文做二次筛选，并结合当前课题给出高可行研究方向。
+- `../wiki/资料总览/相关工作论文筛选与研究方向建议.md`：对相关工作中的论文做二次筛选，并结合当前课题给出高可行研究方向。
 - `experiment_ops/README.md`：experiment_ops 目录索引/实验入口
 - `vllm_analysis/README.md`：vllm_analysis 目录索引/性能与源码机制解释入口
 - `vllm_analysis/10_CPU_attention_acc_locality新kernel实现说明.md`：新增 `acc-local-l3` CPU attention kernel 的实现说明与核心代码阅读入口

@@ -324,6 +324,7 @@ def _rank_worker(
             isa=isa,
             seed=args_dict["seed"] + rank,
             locality_mode=args_dict["attn_locality_mode"],
+            locality_group_span=args_dict["attn_locality_group_span"],
         )
         if args_dict["warmup_iters"] > 0:
             run_attention_iters(prepared, args_dict["warmup_iters"])

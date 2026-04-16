@@ -2997,6 +2997,7 @@ def cpu_attn_get_scheduler_metadata_acc_locality(
     sliding_window_size: int,
     isa: str,
     enable_kv_split: bool,
+    group_span: int = 1,
 ) -> torch.Tensor:
     sheduler_metadata = torch.ops._C.get_scheduler_metadata_acc_locality(
         num_reqs,
@@ -3010,6 +3011,7 @@ def cpu_attn_get_scheduler_metadata_acc_locality(
         sliding_window_size,
         isa,
         enable_kv_split,
+        group_span,
     )
     return sheduler_metadata
 

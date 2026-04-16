@@ -1,8 +1,13 @@
 #ifndef CPU_ATTN_HPP
 #define CPU_ATTN_HPP
 
-#include <type_traits>
 #include <cstddef>
+#include <cstdio>
+#include <cstdlib>
+#include <sstream>
+#include <string>
+#include <type_traits>
+#include <vector>
 
 #if defined(__APPLE__)
   #include <sys/sysctl.h>
@@ -13,6 +18,18 @@
 
 namespace cpu_attention {
 enum class ISA { AMX, VEC, VEC16, NEON };
+
+inline bool is_truthy_env(const char* env) {
+  return env != nullptr && env[0] != '\0' && env[0] != '0';
+}
+
+inline bool should_log_runtime_summary() {
+  const char* generic_env = std::getenv("VLLM_CPU_ATTN_DEBUG");
+  if (generic_env != nullptr) {
+    return is_truthy_env(generic_env);
+  }
+  return is_truthy_env(std::getenv("VLLM_CPU_ATTN_ACC_LOCALITY_DEBUG"));
+}
 
 template <ISA isa, typename scalar_t, int64_t head_dim>
 class AttentionImpl {};
@@ -176,6 +193,72 @@ struct AttentionMetadata {
     std::printf("%s", ss.str().c_str());
   }
 };
+
+inline const char* isa_to_string(ISA isa) {
+  switch (isa) {
+    case ISA::AMX:
+      return "AMX";
+    case ISA::VEC:
+      return "VEC";
+    case ISA::VEC16:
+      return "VEC16";
+    case ISA::NEON:
+      return "NEON";
+    default:
+      return "UNKNOWN";
+  }
+}
+
+inline std::string build_runtime_summary(const AttentionMetadata& metadata,
+                                         int32_t actual_kv_head_num) {
+  std::stringstream ss;
+  ss << "CPU attention balanced runtime summary\n";
+  ss << "  isa=" << isa_to_string(metadata.isa)
+     << ", thread_num=" << metadata.thread_num
+     << ", effective_thread_num=" << metadata.effective_thread_num
+     << ", actual_kv_head_num=" << actual_kv_head_num
+     << ", workitem_group_num=" << metadata.workitem_group_num
+     << ", reduction_item_num=" << metadata.reduction_item_num
+     << ", reduction_split_num=" << metadata.reduction_split_num
+     << ", attention_task_num="
+     << actual_kv_head_num * metadata.effective_thread_num
+     << ", reduction_task_num="
+     << actual_kv_head_num * metadata.reduction_item_num
+     << ", attention_scratchpad_size_per_thread="
+     << metadata.attention_scratchpad_size_per_thread
+     << ", reduction_scratchpad_size_per_kv_head="
+     << metadata.reduction_scratchpad_size_per_kv_head << '\n';
+
+  ss << "  cu_workitem_num_per_thread=[";
+  for (int32_t i = 0; i <= metadata.thread_num; ++i) {
+    if (i > 0) {
+      ss << ',';
+    }
+    ss << metadata.cu_workitem_num_per_thread[i];
+  }
+  ss << "]\n";
+
+  for (int32_t thread_id = 0; thread_id < metadata.thread_num; ++thread_id) {
+    const int32_t begin = metadata.cu_workitem_num_per_thread[thread_id];
+    const int32_t end = metadata.cu_workitem_num_per_thread[thread_id + 1];
+    ss << "  thread " << thread_id << ": workitem_group_range=[" << begin << ','
+       << end << "), workitem_group_num=" << (end - begin) << '\n';
+  }
+
+  for (int32_t workitem_group_idx = 0; workitem_group_idx < metadata.workitem_group_num;
+       ++workitem_group_idx) {
+    ss << "  workitem_group " << workitem_group_idx << ": "
+       << metadata.workitem_groups_ptr[workitem_group_idx].to_string() << '\n';
+  }
+
+  for (int32_t reduction_item_idx = 0; reduction_item_idx < metadata.reduction_item_num;
+       ++reduction_item_idx) {
+    ss << "  reduction_item " << reduction_item_idx << ": "
+       << metadata.reduction_items_ptr[reduction_item_idx].to_string() << '\n';
+  }
+
+  return ss.str();
+}
 
 // Thread attention scratchpad contains:
 //  - Q: q_tile_size * head_dim * q_buffer_elem_size, gather Q heads, especially
@@ -1339,6 +1422,18 @@ class AttentionMainLoop {
   void operator()(const AttentionInput* input) {
     const int thread_num = omp_get_max_threads();
     TORCH_CHECK_EQ(input->metadata->thread_num, thread_num);
+    const int32_t q_head_num = input->num_heads;
+    const int32_t kv_head_num = input->num_kv_heads;
+    const int32_t q_heads_per_kv = q_head_num / kv_head_num;
+    const bool use_gqa =
+        (max_q_head_num_per_iter % q_heads_per_kv == 0) ? true : false;
+    const int32_t actual_kv_head_num = use_gqa ? kv_head_num : q_head_num;
+    if (should_log_runtime_summary()) {
+      const std::string summary =
+          build_runtime_summary(*input->metadata, actual_kv_head_num);
+      std::printf("%s", summary.c_str());
+      std::fflush(stdout);
+    }
     std::atomic<int32_t> guard_counter(0);
     std::atomic<int32_t>* guard_counter_ptr = &guard_counter;
 
@@ -1352,12 +1447,6 @@ class AttentionMainLoop {
       attention_impl_t attn_impl;
 
       // general information
-      const int32_t q_head_num = input->num_heads;
-      const int32_t kv_head_num = input->num_kv_heads;
-      const int32_t q_heads_per_kv = q_head_num / kv_head_num;
-      const bool use_gqa =
-          (max_q_head_num_per_iter % q_heads_per_kv == 0) ? true : false;
-      const int32_t actual_kv_head_num = use_gqa ? kv_head_num : q_head_num;
       const int32_t actual_q_heads_per_kv = use_gqa ? q_heads_per_kv : 1;
       TORCH_CHECK_LE(actual_q_heads_per_kv, max_q_head_num_per_iter);
       const int32_t max_q_token_num_per_iter =

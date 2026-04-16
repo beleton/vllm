@@ -1,14 +1,15 @@
 # AMDuProf 背景速记
 - 机器：AMD EPYC 9745，family `0x1a`，model `0x11`；本机指标定义主要对应 `/opt/AMDuProf_5.2-606/bin/AMDPerf/data/0x1a_0x1/`。
 - 常用本地资料：
-  - `/home/zjj/vllm/info/AMDuProfPcm/AMDuProfPcm.pdf`
-  - `/home/zjj/vllm/info/AMDuProfPcm/AMDuProfPcm_metrics.pdf`
+  - `/home/zjj/vllm/wiki/原始资料/AMDuProfPcm/AMDuProfPcm.pdf`
+  - `/home/zjj/vllm/wiki/原始资料/AMDuProfPcm/AMDuProfPcm_metrics.pdf`
   - `/opt/AMDuProf_5.2-606/bin/AMDPerf/data/0x1a_0x1/core_metrics.json`
   - `/opt/AMDuProf_5.2-606/bin/AMDPerf/data/0x1a_0x1/core_event.json`
   - `/opt/AMDuProf_5.2-606/bin/AMDPerf/data/0x1a_0x1/l3_metrics.json`
   - `/opt/AMDuProf_5.2-606/bin/Data/Config/0x1a_0x1.conf`
 - 现有项目术语表：
-  - `/home/zjj/vllm/test_results/Qwen3-30B-A3B_analysis/docs/Qwen3-30B-A3B_metrics_glossary.md`
+  - `/home/zjj/vllm/wiki/术语与背景/AMDuProfPcm指标介绍.md`
+  - `/home/zjj/vllm/wiki/术语与背景/访存延迟测量.md`
 
 - 解释规则：
   - `PTI` = 每千条退休指令，分母是 `OsUserInst` / `retired_instructions`，不是 dispatch/issue 指令。

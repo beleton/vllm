@@ -2,7 +2,7 @@
 
 > 更新时间：2026-03-24 18:49 +0800  
 > 范围：`vLLM v1 CPU backend`；重点看 `decoder attention + paged KV cache + TP + NUMA + OpenMP`。  
-> 对照论文：`info/papers/GPU_Attention_NUMA_Optimization.pdf`。  
+> 对照论文：`wiki/原始资料/papers/GPU_Attention_NUMA_Optimization.pdf`。  
 > 当前机器：`2 x AMD EPYC 9745 128-Core Processor`。  
 > 证据类型：静态源码、论文 PDF、已有日志 `test_results/qwen3_tp2_init_2026-03-18_2338.log`。  
 > 假设：除明确绑定日志/实验结果的条目外，本文所有“性能收益/瓶颈”判断都只是源码推断，不是已跑实验结论。
@@ -690,7 +690,7 @@ AttentionMainLoop::operator()
 ## 9. 与 GPU 论文的逐项对照：哪些能迁移，哪些不能
 
 ### 9.1 论文真正做了什么
-- 论文核心观点：在 disaggregated / chiplet GPU 上，attention 的多个计算块如果共享同一组 K/V，就应尽量被调到同一 NUMA 域 / 同一 XCD，以提高缓存复用。这里的 XCD 可以简单看成 MI300X 上一个相对局部的执行/缓存域。证据：`info/papers/GPU_Attention_NUMA_Optimization.pdf` 第 1 页摘要、第 7 页 Section 3.3。
+- 论文核心观点：在 disaggregated / chiplet GPU 上，attention 的多个计算块如果共享同一组 K/V，就应尽量被调到同一 NUMA 域 / 同一 XCD，以提高缓存复用。这里的 XCD 可以简单看成 MI300X 上一个相对局部的执行/缓存域。证据：`wiki/原始资料/papers/GPU_Attention_NUMA_Optimization.pdf` 第 1 页摘要、第 7 页 Section 3.3。
 - 论文提出 `Swizzled Head-first Mapping`：先按 head-first 组织，再通过 workgroup ID 重映射，把共享 K/V 的 workgroup 尽量限制在同一 XCD。证据：同 PDF 第 7 页 Figure 10/11。
 - 论文给出的收益是：在 MI300X 上 attention 可达最高约 50% 性能提升，并维持 80-97% 的 L2 hit rate。证据：同 PDF 第 1 页摘要、第 8-10 页 Figure 12-16 与结论。
 
@@ -816,4 +816,4 @@ AttentionMainLoop::operator()
 - Qwen3 MoE attention TP 切分：`vllm/model_executor/models/qwen3_moe.py`
 - TP linear 通信边界：`vllm/model_executor/layers/linear.py`
 - 当前 TP backend 证据：`test_results/qwen3_tp2_init_2026-03-18_2338.log`
-- 对照论文：`info/papers/GPU_Attention_NUMA_Optimization.pdf`
+- 对照论文：`wiki/原始资料/papers/GPU_Attention_NUMA_Optimization.pdf`

@@ -29,6 +29,7 @@ logger = init_logger(__name__)
 
 _CPU_ARCH_PREFER_MIXED_BATCH = (CpuArchEnum.X86, CpuArchEnum.ARM)
 _CPU_ATTN_LOCALITY_MODE_ENV = "VLLM_CPU_ATTN_LOCALITY_MODE"
+_CPU_ATTN_LOCALITY_GROUP_SPAN_ENV = "VLLM_CPU_ATTN_LOCALITY_GROUP_SPAN"
 _CPU_ATTN_LOCALITY_MODES = {"balanced", "acc-local-l3"}
 
 
@@ -90,6 +91,7 @@ class CPUAttentionBackend(AttentionBackend):
 class CPUAttentionMetadata:
     isa: str
     locality_mode: str
+    locality_group_span: int
     num_actual_tokens: int  # Number of tokens excluding padding.
     max_query_len: int
     query_start_loc: torch.Tensor
@@ -144,6 +146,7 @@ class CPUAttentionMetadataBuilder(AttentionMetadataBuilder[CPUAttentionMetadata]
         self.block_size = vllm_config.cache_config.block_size
         self.isa = _get_attn_isa(self.dtype, self.block_size, self.head_dim)
         self.locality_mode = _resolve_cpu_attn_locality_mode()
+        self.locality_group_span = _resolve_cpu_attn_locality_group_span()
         self.is_cross_attention = isinstance(kv_cache_spec, CrossAttentionSpec)
 
     def build(
@@ -181,7 +184,7 @@ class CPUAttentionMetadataBuilder(AttentionMetadataBuilder[CPUAttentionMetadata]
             block_table_tensor = block_table_tensor[:num_decodes]
 
         scheduler_op, _ = _get_cpu_attn_ops(self.locality_mode)
-        sheduler_metadata = scheduler_op(
+        scheduler_kwargs = dict(
             num_reqs=num_reqs,
             num_heads=self.num_heads,
             num_kv_heads=self.num_kv_heads,
@@ -194,10 +197,14 @@ class CPUAttentionMetadataBuilder(AttentionMetadataBuilder[CPUAttentionMetadata]
             isa=self.isa,
             enable_kv_split=True,
         )
+        if self.locality_mode == "acc-local-l3":
+            scheduler_kwargs["group_span"] = self.locality_group_span
+        sheduler_metadata = scheduler_op(**scheduler_kwargs)
 
         attn_metadata = CPUAttentionMetadata(
             isa=self.isa,
             locality_mode=self.locality_mode,
+            locality_group_span=self.locality_group_span,
             num_actual_tokens=num_actual_tokens,
             max_query_len=max_query_len,
             query_start_loc=query_start_loc,
@@ -521,6 +528,32 @@ def _resolve_cpu_attn_locality_mode(locality_mode: str | None = None) -> str:
         mode,
     )
     return "balanced"
+
+
+def _resolve_cpu_attn_locality_group_span(group_span: int | None = None) -> int:
+    if group_span is None:
+        raw_value = os.getenv(_CPU_ATTN_LOCALITY_GROUP_SPAN_ENV)
+        if raw_value is None:
+            return 1
+        try:
+            group_span = int(raw_value)
+        except ValueError:
+            logger.warning_once(
+                "Unsupported %s=%s, fallback to 1.",
+                _CPU_ATTN_LOCALITY_GROUP_SPAN_ENV,
+                raw_value,
+            )
+            return 1
+
+    if group_span >= 1:
+        return group_span
+
+    logger.warning_once(
+        "Unsupported %s=%s, fallback to 1.",
+        _CPU_ATTN_LOCALITY_GROUP_SPAN_ENV,
+        group_span,
+    )
+    return 1
 
 
 def _get_cpu_attn_ops(

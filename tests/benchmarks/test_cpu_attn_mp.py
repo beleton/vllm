@@ -284,6 +284,43 @@ def test_prepare_attention_run_uses_selected_locality_mode(monkeypatch):
     assert prepared.attention_op is attention_op
 
 
+def test_prepare_attention_run_passes_group_span_to_acc_locality_scheduler(
+    monkeypatch,
+):
+    calls = {}
+    scheduler_metadata = torch.ones(4, dtype=torch.int32)
+
+    def fake_get_cpu_attn_ops(mode):
+        def fake_scheduler(**kwargs):
+            calls["scheduler_kwargs"] = kwargs
+            return scheduler_metadata
+
+        return fake_scheduler, object()
+
+    monkeypatch.setattr(benchmark_cpu_attn, "_get_cpu_attn_ops", fake_get_cpu_attn_ops)
+    monkeypatch.setattr(
+        benchmark_cpu_attn,
+        "cpu_attn_reshape_and_cache",
+        lambda **kwargs: None,
+    )
+
+    benchmark_cpu_attn.prepare_attention_run(
+        seq_lens=[(1, 1)],
+        num_heads=(1, 1),
+        head_size=32,
+        dtype=torch.float32,
+        block_size=32,
+        num_blocks=1,
+        enable_kv_split=True,
+        isa="vec",
+        seed=0,
+        locality_mode="acc-local-l3",
+        locality_group_span=4,
+    )
+
+    assert calls["scheduler_kwargs"]["group_span"] == 4
+
+
 def test_resolve_workload_lengths_decode_like_supports_q_kv_len():
     q_len, kv_len = resolve_workload_lengths(
         workload="decode-like",

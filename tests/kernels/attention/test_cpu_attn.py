@@ -163,6 +163,37 @@ def test_cpu_attention_acc_locality_metadata_exposes_l3_subgroups():
     assert summary["attention_task_num"] <= summary["legacy_attention_task_num"]
 
 
+def test_cpu_attention_acc_locality_metadata_group_span_expands_kv_head_coverage():
+    omp_cpuids, thread_num = _select_two_runtime_l3_groups()
+    torch.ops._C_utils.init_cpu_threads_env(omp_cpuids)
+
+    case = _prepare_small_cpu_attention_case()
+    metadata = cpu_attn_get_scheduler_metadata_acc_locality(
+        num_reqs=1,
+        num_heads=4,
+        num_kv_heads=2,
+        head_dim=32,
+        seq_lens=case["seq_lens"],
+        dtype=torch.float32,
+        query_start_loc=case["query_start_loc"],
+        causal=True,
+        sliding_window_size=-1,
+        isa="vec",
+        enable_kv_split=True,
+        group_span=2,
+    )
+
+    summary = json.loads(torch.ops._C_utils.inspect_cpu_attn_acc_locality_metadata(metadata))
+
+    assert summary["thread_num"] == thread_num
+    assert summary["subgroup_num"] == 2
+    assert summary["group_span"] == 2
+    assert summary["actual_kv_head_num"] == 2
+    assert summary["kv_head_to_subgroup"] == [0, 0]
+    assert summary["attention_task_num"] == 4
+    assert summary["legacy_attention_task_num"] >= summary["attention_task_num"]
+
+
 def test_cpu_attention_acc_locality_path_matches_legacy_output_for_small_case():
     omp_cpuids = _select_runtime_cpu_ids()
     torch.ops._C_utils.init_cpu_threads_env(omp_cpuids)
@@ -239,7 +270,7 @@ def test_cpu_attention_acc_locality_runtime_log_exposes_task_partition(
 ):
     omp_cpuids, _ = _select_two_runtime_l3_groups()
     torch.ops._C_utils.init_cpu_threads_env(omp_cpuids)
-    monkeypatch.setenv("VLLM_CPU_ATTN_ACC_LOCALITY_DEBUG", "1")
+    monkeypatch.setenv("VLLM_CPU_ATTN_DEBUG", "1")
 
     case = _prepare_small_cpu_attention_case()
     metadata = cpu_attn_get_scheduler_metadata_acc_locality(
@@ -282,6 +313,115 @@ def test_cpu_attention_acc_locality_runtime_log_exposes_task_partition(
     assert "legacy_attention_task_num=" in captured.out
     assert "kv_heads=" in captured.out
     assert "legacy_slots=" in captured.out
+
+
+def test_cpu_attention_acc_locality_group_span_runtime_log_shards_legacy_slots(
+    monkeypatch: pytest.MonkeyPatch,
+    capfd: pytest.CaptureFixture[str],
+):
+    omp_cpuids, _ = _select_two_runtime_l3_groups()
+    torch.ops._C_utils.init_cpu_threads_env(omp_cpuids)
+    monkeypatch.setenv("VLLM_CPU_ATTN_DEBUG", "1")
+
+    case = _prepare_small_cpu_attention_case()
+    metadata = cpu_attn_get_scheduler_metadata_acc_locality(
+        num_reqs=1,
+        num_heads=4,
+        num_kv_heads=2,
+        head_dim=32,
+        seq_lens=case["seq_lens"],
+        dtype=torch.float32,
+        query_start_loc=case["query_start_loc"],
+        causal=True,
+        sliding_window_size=-1,
+        isa="vec",
+        enable_kv_split=True,
+        group_span=2,
+    )
+    summary = json.loads(torch.ops._C_utils.inspect_cpu_attn_acc_locality_metadata(metadata))
+    thread0_slots = list(range(0, summary["legacy_effective_thread_num"], 2))
+    thread1_slots = list(range(1, summary["legacy_effective_thread_num"], 2))
+
+    output = torch.empty_like(case["query"])
+    capfd.readouterr()
+    cpu_attention_with_kv_cache_acc_locality(
+        query=case["query"],
+        key_cache=case["packed_key_cache"],
+        value_cache=case["packed_value_cache"],
+        output=output,
+        query_start_loc=case["query_start_loc"],
+        seq_lens=case["seq_lens"],
+        scale=case["scale"],
+        causal=True,
+        alibi_slopes=None,
+        sliding_window=case["window_size"],
+        block_table=case["block_tables"],
+        softcap=0,
+        scheduler_metadata=metadata,
+        s_aux=None,
+    )
+    captured = capfd.readouterr()
+
+    assert "group_span=2" in captured.out
+    assert "covered_thread_num=2" in captured.out
+    assert (
+        f"thread 0: kv_head 0, covered_thread_offset=0, legacy_slots={thread0_slots}"
+        in captured.out
+    )
+    assert (
+        f"thread 1: kv_head 0, covered_thread_offset=1, legacy_slots={thread1_slots}"
+        in captured.out
+    )
+
+
+def test_cpu_attention_balanced_runtime_log_exposes_scheduler_metadata(
+    monkeypatch: pytest.MonkeyPatch,
+    capfd: pytest.CaptureFixture[str],
+):
+    omp_cpuids = _select_runtime_cpu_ids()
+    torch.ops._C_utils.init_cpu_threads_env(omp_cpuids)
+    monkeypatch.setenv("VLLM_CPU_ATTN_DEBUG", "1")
+
+    case = _prepare_small_cpu_attention_case()
+    metadata = cpu_attn_get_scheduler_metadata(
+        num_reqs=1,
+        num_heads=4,
+        num_kv_heads=2,
+        head_dim=32,
+        seq_lens=case["seq_lens"],
+        dtype=torch.float32,
+        query_start_loc=case["query_start_loc"],
+        causal=True,
+        sliding_window_size=-1,
+        isa="vec",
+        enable_kv_split=True,
+    )
+
+    output = torch.empty_like(case["query"])
+    capfd.readouterr()
+    cpu_attention_with_kv_cache(
+        query=case["query"],
+        key_cache=case["packed_key_cache"],
+        value_cache=case["packed_value_cache"],
+        output=output,
+        query_start_loc=case["query_start_loc"],
+        seq_lens=case["seq_lens"],
+        scale=case["scale"],
+        causal=True,
+        alibi_slopes=None,
+        sliding_window=case["window_size"],
+        block_table=case["block_tables"],
+        softcap=0,
+        scheduler_metadata=metadata,
+        s_aux=None,
+    )
+    captured = capfd.readouterr()
+
+    assert "CPU attention balanced runtime summary" in captured.out
+    assert "effective_thread_num=" in captured.out
+    assert "attention_task_num=" in captured.out
+    assert "reduction_task_num=" in captured.out
+    assert "thread 0: workitem_group_range=" in captured.out
 
 NUM_HEADS = [
     (4, 4),

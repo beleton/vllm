@@ -87,6 +87,7 @@ def prepare_attention_run(
     isa: str | None = None,
     seed: int = 0,
     locality_mode: str = "balanced",
+    locality_group_span: int = 1,
 ) -> PreparedAttentionRun:
     current_platform.seed_everything(seed)
     num_seqs = len(seq_lens)
@@ -155,7 +156,7 @@ def prepare_attention_run(
     )
 
     scheduler_op, attention_op = _get_cpu_attn_ops(locality_mode)
-    metadata = scheduler_op(
+    scheduler_kwargs = dict(
         num_reqs=num_seqs,
         num_heads=num_query_heads,
         num_kv_heads=num_kv_heads,
@@ -168,6 +169,9 @@ def prepare_attention_run(
         isa=isa,
         enable_kv_split=enable_kv_split,
     )
+    if locality_mode == "acc-local-l3":
+        scheduler_kwargs["group_span"] = locality_group_span
+    metadata = scheduler_op(**scheduler_kwargs)
 
     return PreparedAttentionRun(
         attention_op=attention_op,
@@ -228,6 +232,7 @@ def benchmark_attention(
     iters: int = 20,
     warmup_iters: int = 5,
     locality_mode: str = "balanced",
+    locality_group_span: int = 1,
 ) -> AttentionBenchmarkResult:
     prepared = prepare_attention_run(
         seq_lens=seq_lens,
@@ -242,6 +247,7 @@ def benchmark_attention(
         isa=isa,
         seed=seed,
         locality_mode=locality_mode,
+        locality_group_span=locality_group_span,
     )
 
     run_attention_iters(prepared, warmup_iters)
