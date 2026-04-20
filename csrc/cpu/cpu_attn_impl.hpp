@@ -31,6 +31,23 @@ inline bool should_log_runtime_summary() {
   return is_truthy_env(std::getenv("VLLM_CPU_ATTN_ACC_LOCALITY_DEBUG"));
 }
 
+inline bool should_log_runtime_trace() {
+  return is_truthy_env(std::getenv("VLLM_CPU_ATTN_TRACE"));
+}
+
+inline void print_runtime_trace_line(const std::string& line) {
+#pragma omp critical(cpu_attention_runtime_trace)
+  {
+    const char* trace_rank = std::getenv("VLLM_CPU_ATTN_TRACE_RANK");
+    if (trace_rank != nullptr && trace_rank[0] != '\0') {
+      std::printf("rank=%s %s\n", trace_rank, line.c_str());
+    } else {
+      std::printf("%s\n", line.c_str());
+    }
+    std::fflush(stdout);
+  }
+}
+
 template <ISA isa, typename scalar_t, int64_t head_dim>
 class AttentionImpl {};
 
@@ -1555,6 +1572,8 @@ class AttentionMainLoop {
                ++workitem_group_idx) {
             AttentionWorkItemGroup* const current_workitem_group =
                 &curr_workitem_groups[workitem_group_idx];
+            const int32_t global_workitem_group_idx =
+                cu_workitem_num_per_thread[thread_offset] + workitem_group_idx;
 
             const int32_t current_group_idx = current_workitem_group->req_id;
             const int32_t kv_start_pos =
@@ -1564,6 +1583,24 @@ class AttentionMainLoop {
             const int32_t q_token_id_start =
                 current_workitem_group->q_token_id_start;
             const int32_t q_token_num = current_workitem_group->q_token_num;
+            if (should_log_runtime_trace()) {
+              std::stringstream ss;
+              ss << "CPU attention trace "
+                 << "mode=balanced"
+                 << " thread_id=" << thread_id
+                 << " task_idx=" << task_idx
+                 << " thread_offset=" << thread_offset
+                 << " kv_head_idx=" << kv_head_idx
+                 << " workitem_group_idx=" << global_workitem_group_idx
+                 << " req_id=" << current_group_idx
+                 << " q_token_id_start=" << q_token_id_start
+                 << " q_token_num=" << q_token_num
+                 << " kv_split_pos_start=" << kv_start_pos
+                 << " kv_split_pos_end=" << kv_end_pos
+                 << " split_id=" << curr_spilt_id
+                 << " local_split_id=" << current_workitem_group->local_split_id;
+              print_runtime_trace_line(ss.str());
+            }
 
             // taskgroup general information
             const int32_t q_end = input->query_start_loc[current_group_idx + 1];

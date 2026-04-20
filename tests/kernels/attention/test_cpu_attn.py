@@ -74,11 +74,33 @@ def _select_runtime_cpu_ids(max_cpu_num: int = 2) -> str:
     return ",".join(str(cpu_id) for cpu_id in selected_cpu_ids)
 
 
+def _select_runtime_cpu_ids_by_l3_group_sizes(*group_sizes: int) -> tuple[str, list[int]]:
+    _, logical_cpu_list = CpuPlatform.get_allowed_cpu_core_node_list()
+    grouped = list(group_logical_cpus_by_l3(logical_cpu_list).values())
+    if len(grouped) < len(group_sizes):
+        pytest.skip("Current environment does not expose enough L3 groups.")
+
+    selected_cpu_ids: list[int] = []
+    selected_group_sizes: list[int] = []
+    for group_idx, group_size in enumerate(group_sizes):
+        cpus = grouped[group_idx]
+        if len(cpus) < group_size:
+            pytest.skip(
+                f"L3 group {group_idx} does not expose {group_size} logical CPUs."
+            )
+        selected_cpu_ids.extend(cpu.id for cpu in cpus[:group_size])
+        selected_group_sizes.append(group_size)
+
+    return ",".join(str(cpu_id) for cpu_id in selected_cpu_ids), selected_group_sizes
+
+
 def _prepare_small_cpu_attention_case(
     isa: str = "vec",
     dtype: torch.dtype = torch.float32,
+    seq_lens: list[tuple[int, int]] | None = None,
 ) -> dict[str, torch.Tensor | float | tuple[int, int]]:
-    seq_lens = [(32, 128)]
+    if seq_lens is None:
+        seq_lens = [(32, 128)]
     num_seqs = len(seq_lens)
     query_lens = [x[0] for x in seq_lens]
     kv_lens = [x[1] for x in seq_lens]
@@ -192,6 +214,35 @@ def test_cpu_attention_acc_locality_metadata_group_span_expands_kv_head_coverage
     assert summary["kv_head_to_subgroup"] == [0, 0]
     assert summary["attention_task_num"] == 4
     assert summary["legacy_attention_task_num"] >= summary["attention_task_num"]
+
+
+def test_cpu_attention_acc_locality_metadata_keeps_all_legacy_slots_schedulable_under_uneven_subgroups():
+    omp_cpuids, subgroup_sizes = _select_runtime_cpu_ids_by_l3_group_sizes(4, 2)
+    torch.ops._C_utils.init_cpu_threads_env(omp_cpuids)
+
+    case = _prepare_small_cpu_attention_case()
+    metadata = cpu_attn_get_scheduler_metadata_acc_locality(
+        num_reqs=1,
+        num_heads=4,
+        num_kv_heads=2,
+        head_dim=32,
+        seq_lens=case["seq_lens"],
+        dtype=torch.float32,
+        query_start_loc=case["query_start_loc"],
+        causal=True,
+        sliding_window_size=-1,
+        isa="vec",
+        enable_kv_split=True,
+    )
+
+    summary = json.loads(torch.ops._C_utils.inspect_cpu_attn_acc_locality_metadata(metadata))
+    expected_attention_task_num = (
+        summary["actual_kv_head_num"] * summary["legacy_effective_thread_num"]
+    )
+
+    assert summary["subgroup_thread_num"] == subgroup_sizes
+    assert summary["legacy_attention_task_num"] == expected_attention_task_num
+    assert summary["attention_task_num"] == expected_attention_task_num
 
 
 def test_cpu_attention_acc_locality_path_matches_legacy_output_for_small_case():
@@ -312,7 +363,8 @@ def test_cpu_attention_acc_locality_runtime_log_exposes_task_partition(
     assert "attention_task_num=" in captured.out
     assert "legacy_attention_task_num=" in captured.out
     assert "kv_heads=" in captured.out
-    assert "legacy_slots=" in captured.out
+    assert "scheduler_mode=local-dynamic" in captured.out
+    assert "legacy_slot_pool=" in captured.out
 
 
 def test_cpu_attention_acc_locality_group_span_runtime_log_shards_legacy_slots(
@@ -339,8 +391,9 @@ def test_cpu_attention_acc_locality_group_span_runtime_log_shards_legacy_slots(
         group_span=2,
     )
     summary = json.loads(torch.ops._C_utils.inspect_cpu_attn_acc_locality_metadata(metadata))
-    thread0_slots = list(range(0, summary["legacy_effective_thread_num"], 2))
-    thread1_slots = list(range(1, summary["legacy_effective_thread_num"], 2))
+    legacy_slot_pool = "[" + ",".join(
+        str(slot) for slot in range(summary["legacy_effective_thread_num"])
+    ) + "]"
 
     output = torch.empty_like(case["query"])
     capfd.readouterr()
@@ -364,14 +417,61 @@ def test_cpu_attention_acc_locality_group_span_runtime_log_shards_legacy_slots(
 
     assert "group_span=2" in captured.out
     assert "covered_thread_num=2" in captured.out
-    assert (
-        f"thread 0: kv_head 0, covered_thread_offset=0, legacy_slots={thread0_slots}"
-        in captured.out
+    assert "scheduler_mode=local-dynamic" in captured.out
+    assert f"legacy_slot_pool={legacy_slot_pool}" in captured.out
+    assert "covered_thread_offset=" not in captured.out
+
+
+def test_cpu_attention_acc_locality_runtime_log_uses_local_dynamic_slots_for_uneven_subgroups(
+    monkeypatch: pytest.MonkeyPatch,
+    capfd: pytest.CaptureFixture[str],
+):
+    omp_cpuids, _ = _select_runtime_cpu_ids_by_l3_group_sizes(4, 2)
+    torch.ops._C_utils.init_cpu_threads_env(omp_cpuids)
+    monkeypatch.setenv("VLLM_CPU_ATTN_DEBUG", "1")
+
+    case = _prepare_small_cpu_attention_case()
+    metadata = cpu_attn_get_scheduler_metadata_acc_locality(
+        num_reqs=1,
+        num_heads=4,
+        num_kv_heads=2,
+        head_dim=32,
+        seq_lens=case["seq_lens"],
+        dtype=torch.float32,
+        query_start_loc=case["query_start_loc"],
+        causal=True,
+        sliding_window_size=-1,
+        isa="vec",
+        enable_kv_split=True,
     )
-    assert (
-        f"thread 1: kv_head 0, covered_thread_offset=1, legacy_slots={thread1_slots}"
-        in captured.out
+    summary = json.loads(torch.ops._C_utils.inspect_cpu_attn_acc_locality_metadata(metadata))
+    legacy_slot_pool = "[" + ",".join(
+        str(slot) for slot in range(summary["legacy_effective_thread_num"])
+    ) + "]"
+
+    output = torch.empty_like(case["query"])
+    capfd.readouterr()
+    cpu_attention_with_kv_cache_acc_locality(
+        query=case["query"],
+        key_cache=case["packed_key_cache"],
+        value_cache=case["packed_value_cache"],
+        output=output,
+        query_start_loc=case["query_start_loc"],
+        seq_lens=case["seq_lens"],
+        scale=case["scale"],
+        causal=True,
+        alibi_slopes=None,
+        sliding_window=case["window_size"],
+        block_table=case["block_tables"],
+        softcap=0,
+        scheduler_metadata=metadata,
+        s_aux=None,
     )
+    captured = capfd.readouterr()
+
+    assert "scheduler_mode=local-dynamic" in captured.out
+    assert f"legacy_slot_pool={legacy_slot_pool}" in captured.out
+    assert "covered_thread_offset=" not in captured.out
 
 
 def test_cpu_attention_balanced_runtime_log_exposes_scheduler_metadata(
@@ -420,8 +520,115 @@ def test_cpu_attention_balanced_runtime_log_exposes_scheduler_metadata(
     assert "CPU attention balanced runtime summary" in captured.out
     assert "effective_thread_num=" in captured.out
     assert "attention_task_num=" in captured.out
-    assert "reduction_task_num=" in captured.out
-    assert "thread 0: workitem_group_range=" in captured.out
+
+
+def test_cpu_attention_balanced_trace_logs_each_workitem_group_for_multi_request_bucket(
+    monkeypatch: pytest.MonkeyPatch,
+    capfd: pytest.CaptureFixture[str],
+):
+    omp_cpuids = _select_runtime_cpu_ids(1)
+    torch.ops._C_utils.init_cpu_threads_env(omp_cpuids)
+    monkeypatch.setenv("VLLM_CPU_ATTN_TRACE", "1")
+    monkeypatch.setenv("VLLM_CPU_ATTN_TRACE_RANK", "0")
+
+    case = _prepare_small_cpu_attention_case(seq_lens=[(4, 32), (4, 32)])
+    metadata = cpu_attn_get_scheduler_metadata(
+        num_reqs=2,
+        num_heads=4,
+        num_kv_heads=2,
+        head_dim=32,
+        seq_lens=case["seq_lens"],
+        dtype=torch.float32,
+        query_start_loc=case["query_start_loc"],
+        causal=True,
+        sliding_window_size=-1,
+        isa="vec",
+        enable_kv_split=True,
+    )
+
+    output = torch.empty_like(case["query"])
+    capfd.readouterr()
+    cpu_attention_with_kv_cache(
+        query=case["query"],
+        key_cache=case["packed_key_cache"],
+        value_cache=case["packed_value_cache"],
+        output=output,
+        query_start_loc=case["query_start_loc"],
+        seq_lens=case["seq_lens"],
+        scale=case["scale"],
+        causal=True,
+        alibi_slopes=None,
+        sliding_window=case["window_size"],
+        block_table=case["block_tables"],
+        softcap=0,
+        scheduler_metadata=metadata,
+        s_aux=None,
+    )
+    captured = capfd.readouterr()
+
+    assert "mode=balanced" in captured.out
+    assert "rank=0" in captured.out
+    assert "workitem_group_idx=" in captured.out
+    assert "task_idx=0" in captured.out
+    assert "req_id=0" in captured.out
+    assert "req_id=1" in captured.out
+    assert "q_token_id_start=0" in captured.out
+
+
+def test_cpu_attention_acc_locality_trace_logs_thread_request_and_locality_fields(
+    monkeypatch: pytest.MonkeyPatch,
+    capfd: pytest.CaptureFixture[str],
+):
+    omp_cpuids = _select_runtime_cpu_ids(1)
+    torch.ops._C_utils.init_cpu_threads_env(omp_cpuids)
+    monkeypatch.setenv("VLLM_CPU_ATTN_TRACE", "1")
+    monkeypatch.setenv("VLLM_CPU_ATTN_TRACE_RANK", "0")
+
+    case = _prepare_small_cpu_attention_case(seq_lens=[(4, 32), (4, 32)])
+    metadata = cpu_attn_get_scheduler_metadata_acc_locality(
+        num_reqs=2,
+        num_heads=4,
+        num_kv_heads=2,
+        head_dim=32,
+        seq_lens=case["seq_lens"],
+        dtype=torch.float32,
+        query_start_loc=case["query_start_loc"],
+        causal=True,
+        sliding_window_size=-1,
+        isa="vec",
+        enable_kv_split=True,
+    )
+
+    output = torch.empty_like(case["query"])
+    capfd.readouterr()
+    cpu_attention_with_kv_cache_acc_locality(
+        query=case["query"],
+        key_cache=case["packed_key_cache"],
+        value_cache=case["packed_value_cache"],
+        output=output,
+        query_start_loc=case["query_start_loc"],
+        seq_lens=case["seq_lens"],
+        scale=case["scale"],
+        causal=True,
+        alibi_slopes=None,
+        sliding_window=case["window_size"],
+        block_table=case["block_tables"],
+        softcap=0,
+        scheduler_metadata=metadata,
+        s_aux=None,
+    )
+    captured = capfd.readouterr()
+
+    assert "mode=acc-local-l3" in captured.out
+    assert "rank=0" in captured.out
+    assert "subgroup_id=" in captured.out
+    assert "legacy_thread_offset=" in captured.out
+    assert "workitem_group_idx=" in captured.out
+    assert "req_id=" in captured.out
+    assert "kv_head_idx=" in captured.out
+    assert "q_token_id_start=" in captured.out
+    assert "req_id=0" in captured.out
+    assert "req_id=1" in captured.out
 
 NUM_HEADS = [
     (4, 4),

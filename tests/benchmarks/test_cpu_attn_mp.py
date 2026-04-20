@@ -9,6 +9,7 @@ import benchmarks.kernels.cpu.benchmark_cpu_attn_mp as benchmark_cpu_attn_mp
 from benchmarks.kernels.cpu.benchmark_cpu_attn_mp import (
     add_cli_args,
     build_result_shape_dirname,
+    configure_trace_env_for_rank,
     measure_attention_run,
     resolve_head_shard_plan,
     resolve_workload_lengths,
@@ -372,3 +373,33 @@ def test_build_result_shape_dirname_uses_q_kv_len_for_custom_workload():
     )
 
     assert dirname == "batch_8/q32_KV_2048"
+
+
+def test_configure_trace_env_for_rank_defaults_to_rank0_only(monkeypatch):
+    monkeypatch.setenv("VLLM_CPU_ATTN_TRACE", "1")
+    monkeypatch.delenv("VLLM_CPU_ATTN_TRACE_ALL_RANKS", raising=False)
+
+    configure_trace_env_for_rank(1)
+
+    assert benchmark_cpu_attn_mp.os.environ["VLLM_CPU_ATTN_TRACE"] == "0"
+    assert benchmark_cpu_attn_mp.os.environ["VLLM_CPU_ATTN_TRACE_RANK"] == "1"
+
+
+def test_configure_trace_env_for_rank_keeps_rank0_trace_enabled(monkeypatch):
+    monkeypatch.setenv("VLLM_CPU_ATTN_TRACE", "1")
+    monkeypatch.delenv("VLLM_CPU_ATTN_TRACE_ALL_RANKS", raising=False)
+
+    configure_trace_env_for_rank(0)
+
+    assert benchmark_cpu_attn_mp.os.environ["VLLM_CPU_ATTN_TRACE"] == "1"
+    assert benchmark_cpu_attn_mp.os.environ["VLLM_CPU_ATTN_TRACE_RANK"] == "0"
+
+
+def test_configure_trace_env_for_rank_can_keep_all_ranks_enabled(monkeypatch):
+    monkeypatch.setenv("VLLM_CPU_ATTN_TRACE", "1")
+    monkeypatch.setenv("VLLM_CPU_ATTN_TRACE_ALL_RANKS", "1")
+
+    configure_trace_env_for_rank(1)
+
+    assert benchmark_cpu_attn_mp.os.environ["VLLM_CPU_ATTN_TRACE"] == "1"
+    assert benchmark_cpu_attn_mp.os.environ["VLLM_CPU_ATTN_TRACE_RANK"] == "1"

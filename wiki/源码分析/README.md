@@ -4,6 +4,7 @@
 - [prefill_decode执行分流.md](./prefill_decode执行分流.md)：CPU attention 路径里 prefill / decode 的共用主算子、metadata 差异和 split-KV 分叉点
 - [TP_group与进程间通信.md](./TP_group与进程间通信.md)：CPU backend 下 TP group 的实际通信路径、控制面/数据面分工和常见 collective 落点
 - [CPU关键算子路径.md](./CPU关键算子路径.md)：attention、linear、matmul、MoE 的 CPU 主路径与线程级工作划分入口
+- [CPU_attention_balanced线程级任务划分简述.md](./CPU_attention_balanced线程级任务划分简述.md)：只保留线程粒度，概括 `balanced` 与现有 `acc-local-l3` 的任务分桶、线程分组与动态领取差异
 - [CPU_attention并行计算过程_线程任务workitem与tile.md](./CPU_attention并行计算过程_线程任务workitem与tile.md)：CPU attention 的真实线程、runtime task、workitem 和 tile 是怎样展开的
 - [CPU环境变量与生效路径.md](./CPU环境变量与生效路径.md)：CPU backend 关键环境变量、运行时自动写入变量和主要生效位置
 - [CPU_attention_acc_locality新kernel实现说明.md](./CPU_attention_acc_locality新kernel实现说明.md)：`acc-local-l3` 新路径的 metadata、subgroup 和 runtime 任务过滤机制

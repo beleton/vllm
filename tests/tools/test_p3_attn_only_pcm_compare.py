@@ -36,7 +36,8 @@ def _write_case(root: Path,
                 mode_name: str,
                 slowest_rank_mean_ms: float,
                 session_name: str | None,
-                metrics: dict[str, float] | None):
+                metrics: dict[str, float] | None,
+                group_span: int = 4):
     case_dir = (root / "prefill-like" / "global-fixed" / "batch_16" /
                 f"q{q_len}_kv{kv_len}" / mode_dir)
     case_dir.mkdir(parents=True, exist_ok=True)
@@ -62,7 +63,7 @@ def _write_case(root: Path,
             "local_num_kv_heads": 2,
         },
         "attn_locality_mode": mode_name,
-        "attn_locality_group_span": 4,
+        "attn_locality_group_span": group_span,
         "slowest_rank_mean_ms": slowest_rank_mean_ms,
         "rank_results": [],
     }
@@ -537,6 +538,64 @@ class TestP3AttnOnlyPcmCompare(unittest.TestCase):
             )
             self.assertIn(
                 "| CPI (Sys + User) | 0.7100 | 0.6600 |",
+                markdown,
+            )
+
+    def test_build_outputs_use_actual_mode_dir_headers_for_group_span1(self):
+        module = importlib.import_module("tools.p3_attn_only.pcm_compare")
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            _write_case(
+                root,
+                q_len=64,
+                kv_len=64,
+                mode_dir="balanced",
+                mode_name="balanced",
+                slowest_rank_mean_ms=0.074393,
+                session_name=None,
+                metrics=None,
+                group_span=1,
+            )
+            _write_case(
+                root,
+                q_len=64,
+                kv_len=64,
+                mode_dir="acc-local-l3",
+                mode_name="acc-local-l3",
+                slowest_rank_mean_ms=0.067254,
+                session_name=None,
+                metrics=None,
+                group_span=1,
+            )
+
+            summary_csv, compare_csv, summary_md = module.build_outputs(root)
+
+            with Path(summary_csv).open(encoding="utf-8") as f:
+                summary_rows = list(csv.DictReader(f))
+            self.assertEqual(
+                {
+                    "metric",
+                    "q64_kv64_balanced",
+                    "q64_kv64_acc-local-l3",
+                },
+                set(summary_rows[0].keys()),
+            )
+
+            with Path(compare_csv).open(encoding="utf-8") as f:
+                compare_rows = list(csv.DictReader(f))
+            self.assertEqual(
+                {
+                    "metric",
+                    "q64_kv64_balanced",
+                    "q64_kv64_acc-local-l3",
+                },
+                set(compare_rows[0].keys()),
+            )
+
+            markdown = Path(summary_md).read_text(encoding="utf-8")
+            self.assertIn(
+                "| metric | q64_kv64_balanced | q64_kv64_acc-local-l3 |",
                 markdown,
             )
 

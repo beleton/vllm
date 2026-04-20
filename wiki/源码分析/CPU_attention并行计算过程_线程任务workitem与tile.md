@@ -318,6 +318,28 @@ const int32_t curr_workitem_groups_num =
 + 这个 thread_offset 桶里的一整段 workitems
 ```
 
+### 7.1 `batch > 1` 时，一个 `thread_offset` 桶可以同时挂多个请求
+
+- `thread_offset` 桶和 `request` 不是一一对应关系；同一个桶里可以连续挂多个 `req_id` 的 `workitem_group`。
+- runtime 侧只按 `thread_offset` 对应的前缀和区间取出 `curr_workitem_groups`，随后顺序遍历这段连续的 `AttentionWorkItemGroup[]`。
+- scheduler 侧 `curr_thread_id` 和 `remaining_kv_len` 在 request 之间不会重置，所以一个逻辑桶可以接住上一个 request 的尾段，也可以继续接下一个 request 的开头。
+- 因此，运行时任务 `(kv_head_idx=k, thread_offset=7)` 的实际含义是：
+
+```text
+固定 kv_head_idx = k
++ 依次处理 thread_offset=7 这个桶里的所有 workitem_group
++ 每个 workitem_group 再各自读取自己的 req_id / q / KV 区间
+```
+
+- 这说明同一个 attention task 确实可能跨多个请求访问数据；但它在整个任务内访问的仍是同一个 `kv_head_idx`，不会在同一个 task 里切换到别的 `kv_head`。
+- 因此更准确地说：
+  - `(kv_head_idx=0, thread_offset=7)` 这种 task，会顺序读取“请求 1 的 `kv_head 0`”和“请求 2 的 `kv_head 0`”
+  - 不会在同一个 task 里同时读取“请求 1 的 `kv_head 0`”和“请求 2 的 `kv_head 1`”
+- 这也是 `balanced` 更容易打散 locality 的一个直接来源：
+  - 外层任务先按 `kv_head_idx × thread_offset` 展开
+  - 而单个 `thread_offset` 桶内部又可能混有多个请求的 `workitem_group`
+  - 因此同一个 `kv_head_idx` 任务会顺序扫过多个请求各自的 `K/V` 区间
+
 ## 8. 一个 workitem 到底是什么
 
 `AttentionWorkItemGroup` 里有：
@@ -382,15 +404,13 @@ for (int32_t token_id = 0; token_id < q_token_num;
 
 ### 10.2 第 2 层：把这些最小 q 片段聚成 workitem
 
-- scheduler 用 `curr_workitem.q_token_num += q_tile_token_num` 累加相邻 q 片段。
-- 当：
-  - 当前逻辑线程桶剩余预算不够
-  - 或需要切线程桶
-  - 或需要 split KV
-
-  才会把 `curr_workitem` 写回到 `workitems[]`。
-
-- 所以一个 workitem 可能包含多个最小 q 片段。
+- scheduler 用 `curr_workitem.q_token_num += q_tile_token_num` 和 `curr_workitem.total_kv_len += curr_kv_len` 把相邻最小 q 片段并入当前 `curr_workitem`。
+- `curr_workitem` 写回 `workitems[]` 的触发点有 4 类：
+  - 当前桶剩余预算过短，且当前桶已经承接了工作；这时会先写回当前非空 `curr_workitem`，再切到下一个逻辑桶
+  - 当前累计 q 片段正好走到 `default_tile_token_num` 边界，且当前桶已经承接了工作；这时会先写回当前非空 `curr_workitem`，再切桶
+  - 进入 split-KV 路径；已有的 `curr_workitem` 会先写回，split 出来的 partial-KV workitem 也会立即写回
+  - 单个 request 扫描结束后，如果 `curr_workitem.total_kv_len > 0`，会在 request 尾部写回
+- 因此，一个 workitem 可能包含多个最小 q 片段；写回时机由预算、tile 边界、split-KV 和 request 结束共同决定。
 
 ### 10.3 第 3 层：把 workitems 塞进逻辑线程桶
 
@@ -434,7 +454,6 @@ curr_workitem.total_kv_len += curr_kv_len;
 - scheduler 不是按固定 `q token` 数切 workitem，而是尽量让每个 workitem 和逻辑线程桶承接的 `total_kv_len` 接近预算。
 - `causal prefill` 里，前面的 q token 可见前缀短，单个 q 片段的 `curr_kv_len` 小；后面的 q token 可见前缀长，单个 q 片段的 `curr_kv_len` 大。
 - 所以前面的 workitem 可以装更多 q token，后面的 workitem 只能装更少 q token。
-- `benchmark_balanced_qlen1024.log` 的单个 runtime summary 里，61 个 `workitem_group` 的 `q_token_num` 从 `115 / 55 / 41 / 36 / 31 / 28 / 26` 逐步降到 `20 / 10 / 8`，但对应的 `total_kv_len` 仍都在 `8192 ~ 9280`。
 - `workitem_group.q_token_num` 不均衡是 scheduler 按 `KV` 工作量分组的直接结果。
 
 ### 10.3.3 `workitem_group` 按“可见 KV 区间的对齐长度”累计
@@ -460,12 +479,7 @@ curr_kv_len = aligned_kv_tile_pos_right - aligned_kv_tile_pos_left;
   - 精确可见区间是 `[0, q_right_pos)`
   - 对齐后区间是 `[0, align_up(q_right_pos, kv_block_alignment))`
   - 所以 `curr_kv_len = align_up(q_right_pos, kv_block_alignment)`
-- 当前 `VEC` 路径的 `BlockSizeAlignment = 32`。对 `qhead32_kvhead16_qlen1024` 这组，本地 `q_heads_per_kv = 2`，最小 q 片段大小 `max_num_q_token_per_iter = 4`，因此单个 q 片段的 `q_right_pos` 依次是 `4, 8, 12, ...`，对应的 `curr_kv_len` 依次是 `32, 32, 32, ... , 64, 64, ...`。
-- `benchmark_balanced_qhead32_kvhead16_qlen1024.log` 里第 1 个 `workitem_group`：
-  - `q_token_id_start = 0`
-  - `q_token_num = 724`
-  - `total_kv_len = 68448`
-- 这里的 `68448`，正是把 `q_right_pos = 4, 8, 12, ... , 724` 这些 q 片段各自的 `align_up(q_right_pos, 32)` 累加得到的结果。
+- 例如在 `VEC` 路径下，`BlockSizeAlignment = 32`；若某组输入满足 `q_heads_per_kv = 2`，则最小 q 片段大小是 `4`，单个 q 片段的 `curr_kv_len` 就会按 `align_up(q_right_pos, 32)` 台阶式增长。
 
 ### 10.3.4 runtime 实际读取的是“对齐后的可见 KV 区间”
 
@@ -563,14 +577,6 @@ remaining_kv_len = kv_len_per_thread;
   - 一个 request 可以跨多个逻辑线程桶
   - 一个逻辑线程桶也可以同时装“上一个 request 的尾巴”和“下一个 request 的开头”
   - request 边界不是桶边界
-- `benchmark_balanced_qhead32_kvhead16_qlen1024.log` 的前几个逻辑桶就是这样：
-  - 逻辑桶 `0`：`workitem_group[0]`，只包含 `req0 [0,724)`
-  - 逻辑桶 `1`：`workitem_group[1,2]`，同时包含 `req0 [724,1024)` 和 `req1 [0,100)`
-  - 逻辑桶 `2`：`workitem_group[3]`，只包含 `req1 [100,736)`
-  - 逻辑桶 `3`：`workitem_group[4,5]`，同时包含 `req1 [736,1024)` 和 `req2 [0,160)`
-- 这也解释了为什么：
-  - `req0` 被切成 `724 + 300`，只跨了 1 次桶边界
-  - `req1` 被切成 `100 + 636 + 288`，因为它一开始接在逻辑桶 `1` 的尾部，先形成了一个很短的头段，然后又继续跨了后续桶边界
 
 ### 10.4 第 4 层：运行期按 `kv_head_idx × 逻辑桶` 展开成 attention task
 
@@ -764,8 +770,8 @@ const int32_t split_kv_q_token_num_threshold =
 
 ## 16. 关键源码位置
 
-- `csrc/cpu/cpu_attn.cpp:120-162`
-- `csrc/cpu/cpu_attn.cpp:225-291`
-- `csrc/cpu/cpu_attn_impl.hpp:382-675`
-- `csrc/cpu/cpu_attn_impl.hpp:678-749`
-- `csrc/cpu/cpu_attn_impl.hpp:1340-1760`
+- `csrc/cpu/cpu_attn.cpp:100-162`
+- `csrc/cpu/cpu_attn.cpp:225-292`
+- `csrc/cpu/cpu_attn_impl.hpp:455-760`
+- `csrc/cpu/cpu_attn_impl.hpp:773-856`
+- `csrc/cpu/cpu_attn_impl.hpp:1438-1935`

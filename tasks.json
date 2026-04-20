@@ -1,6 +1,6 @@
 {
     "project": "Chiplet CPU推理加速",
-    "updated_at": "2026-04-16 14:02:52 +0800",
+    "updated_at": "2026-04-20 11:10:59 +0800",
     "tasks": [
         {
             "id": "8",
@@ -293,6 +293,120 @@
         {
             "id": "269",
             "description": "分析 `acc-local-l3` 在什么测试配置下可以让每个 CCD 的线程数与 legacy slot 切分同时更对称，并给出验证 locality 净收益的最小实验配置",
+            "status": "completed",
+            "passes": true
+        },
+        {
+            "id": "270",
+            "description": "修改 `cpu_attn_acc_locality` 调度层：在保持 `kv_head` locality 的前提下，把 covered subgroup 内的 `legacy slot / reduction item` 从静态条带分派改为局部动态领取，并补对应单测与最小 benchmark 验证",
+            "status": "completed",
+            "passes": true
+        },
+        {
+            "id": "271",
+            "description": "修正 `tools/p3_attn_only/pcm_compare.py` 对列头与 markdown 中 `span4` 的硬编码，使输出按实际 `mode_dir/group_span` 标注，并补 `group_span=1` 回归测试",
+            "status": "completed",
+            "passes": true
+        },
+        {
+            "id": "272",
+            "description": "补充 `wiki/源码分析/CPU_attention并行计算过程_线程任务workitem与tile.md`：说明 `balanced` 下单个 `thread_offset` 桶可同时挂多个请求的 `workitem_group`，以及单个 `(kv_head_idx, thread_offset)` task 会顺序处理这些请求但 `kv_head` 保持固定",
+            "status": "completed",
+            "passes": true
+        },
+        {
+            "id": "273",
+            "description": "为 CPU attention 的 `balanced/acc-local-l3` 执行路径增加可选 `TRACE` 日志，逐 `workitem_group` 打印真实线程、请求、`kv_head`、逻辑桶与切分范围，并补最小单测验证",
+            "status": "completed",
+            "passes": true
+        },
+        {
+            "id": "274",
+            "description": "结合当前 `vLLM` legacy CPU attention 源码核对 `wiki/源码分析/CPU_attention并行计算过程_线程任务workitem与tile.md`，确认文中关于 `thread/task/workitem/tile` 的描述是否与实现一致，并记录错误项",
+            "status": "completed",
+            "passes": true
+        },
+        {
+            "id": "275",
+            "description": "为 attention trace 增加 `rank` 标识，并在多进程 benchmark 中默认仅保留 `rank0` 的 trace；补对应单测验证环境变量注入与日志前缀",
+            "status": "completed",
+            "passes": true
+        },
+        {
+            "id": "276",
+            "description": "按当前 legacy CPU attention 源码修订 `wiki/源码分析/CPU_attention并行计算过程_线程任务workitem与tile.md`：删除失效日志引用，精确化 `10.2` 的 workitem 写回条件，并更新关键源码行号",
+            "status": "completed",
+            "passes": true
+        },
+        {
+            "id": "277",
+            "description": "新增 `wiki/源码分析/CPU_attention_balanced线程级任务划分简述.md`，只保留线程粒度，说明 legacy `balanced` attention 的 scheduler 分桶、`kv_head × 逻辑线程桶` 任务展开与统一线程池动态抢任务，并补 wiki 入口",
+            "status": "completed",
+            "passes": true
+        },
+        {
+            "id": "278",
+            "description": "新增 attention trace 日志到单文件 HTML 的可视化脚本，按线程分组展示任务列表并支持按 `rank/mode/thread/kv_head/req` 过滤；补最小解析与 HTML 生成单测",
+            "status": "completed",
+            "passes": true
+        },
+        {
+            "id": "279",
+            "description": "扩写 `wiki/源码分析/CPU_attention_balanced线程级任务划分简述.md`，补入当前 `acc-local-l3` 的线程分组、`kv_head` 覆盖范围与局部动态领取机制，并同步更新 wiki 入口标题",
+            "status": "completed",
+            "passes": true
+        },
+        {
+            "id": "280",
+            "description": "为 attention trace HTML 视图增加 `CCD` 维度：从 benchmark log 的 `locality_groups.l3_cache_id` 恢复 `core -> CCD`，并在 `req × kv_head` 汇总与线程明细中展示涉及的 CCD 集合",
+            "status": "completed",
+            "passes": true
+        },
+        {
+            "id": "281",
+            "description": "根据 `test_results/P3_AttnOnly/Qwen3-30B-A3B/qhead_32_kvhead_16/NPS1_TP2/prefill-like/global-fixed/batch_1/summary.csv` 绘制 `balanced` 与 `acc-local-l3` 的 `slowest rank mean (ms)` 对比图",
+            "status": "completed",
+            "passes": true
+        },
+        {
+            "id": "282",
+            "description": "新增 Python 脚本 `tools/p3_attn_only/plot_slowest_rank_mean_compare.py`，从 `summary.csv` 读取 `balanced/acc-local-l3` 的 `slowest rank mean (ms)` 并生成对比图，补对应单测",
+            "status": "completed",
+            "passes": true
+        },
+        {
+            "id": "283",
+            "description": "将 `tools/p3_attn_only/plot_slowest_rank_mean_compare.py` 生成的对比图从折线图改为分组柱状图，并补对应单测约束 `ax.bar` 调用",
+            "status": "completed",
+            "passes": true
+        },
+        {
+            "id": "284",
+            "description": "扩展 `tools/p3_attn_only/plot_slowest_rank_mean_compare.py`：支持 `balanced_span4/acc-local-l3_span4` 列名并按结果路径自动生成标题；基于 `qhead_32_kvhead_4/NPS1_TP2/prefill-like/global-fixed/batch_16_old_acc/summary.csv` 生成柱状图",
+            "status": "completed",
+            "passes": true
+        },
+        {
+            "id": "285",
+            "description": "润色 `wiki/资料总览/汇报.md` 的文本逻辑，按“观测现象 -> 解释边界 -> 调度对照 -> 当前结论”重组表述并压缩口语化说明",
+            "status": "completed",
+            "passes": true
+        },
+        {
+            "id": "286",
+            "description": "修订 `wiki/实验方案/Qwen3-30B-A3B_attention-only_TP实验步骤.md` 中手工 `DEBUG/TRACE` 命令的日志输出路径，将根目录 `benchmark_*.log` 改为对应 `test_results/P3_AttnOnly/...` 叶子目录并补 `mkdir -p`",
+            "status": "completed",
+            "passes": true
+        },
+        {
+            "id": "287",
+            "description": "基于 `benchmark_balanced_batch1_qhead32_kvhead16_qlen1024.log`、`benchmark_acc_local_l3_batch1_qhead32_kvhead16_span1_qlen1024.log`、`detail_summary.csv` 与 `cpu_attn*_impl.hpp`，分析 `batch_1/qhead_32_kvhead_16` 下 `acc-local-l3` 与 `balanced` 的底层性能差异，并判断与 GPU `ACC` 论文方法的对应边界",
+            "status": "completed",
+            "passes": true
+        },
+        {
+            "id": "288",
+            "description": "根据当前 `csrc/cpu/cpu_attn_acc_locality.cpp`、`cpu_attn_acc_locality_impl.hpp` 与 `vllm/v1/attention/backends/cpu_attn.py` 的实现，修订 `wiki/源码分析/CPU_attention_acc_locality新kernel实现说明.md`，删除已失效的静态条带化/重复执行描述并更新当前调度细节",
             "status": "completed",
             "passes": true
         }

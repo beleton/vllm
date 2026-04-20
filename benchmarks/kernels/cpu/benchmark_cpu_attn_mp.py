@@ -40,6 +40,21 @@ class HeadShardPlan:
     local_num_kv_heads: int
 
 
+def _is_truthy_env_value(value: str | None) -> bool:
+    return value is not None and value != "" and value != "0"
+
+
+def configure_trace_env_for_rank(rank: int) -> None:
+    if "VLLM_CPU_ATTN_TRACE" not in os.environ:
+        return
+
+    os.environ["VLLM_CPU_ATTN_TRACE_RANK"] = str(rank)
+    if rank != 0 and not _is_truthy_env_value(
+        os.environ.get("VLLM_CPU_ATTN_TRACE_ALL_RANKS")
+    ):
+        os.environ["VLLM_CPU_ATTN_TRACE"] = "0"
+
+
 def resolve_head_shard_plan(
     num_query_heads: int,
     num_kv_heads: int,
@@ -269,6 +284,7 @@ def _rank_worker(
     result_queue: mp.Queue,
 ) -> None:
     try:
+        configure_trace_env_for_rank(rank)
         tp_size = args_dict["tp_size"]
         omp_cpuids = resolve_local_omp_cpuid(
             omp_cpuids=args_dict["omp_threads_bind"],

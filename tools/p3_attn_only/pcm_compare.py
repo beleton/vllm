@@ -200,6 +200,12 @@ def _delta_pct(base: float | None, new: float | None) -> float | None:
     return (new - base) / base * 100.0
 
 
+def _build_case_header(shape: str, mode_dir: str | None) -> str:
+    if not mode_dir:
+        return shape
+    return f"{shape}_{mode_dir}"
+
+
 def discover_cases(result_root: str | Path) -> list[dict[str, Any]]:
     result_root = _as_path(result_root).resolve()
     cases = []
@@ -338,8 +344,8 @@ def build_transposed_rows(compare_rows: list[dict[str, Any]]) -> tuple[list[str]
     for row in compare_rows:
         shape = f"q{row['q_len']}_kv{row['kv_len']}"
         paired_headers.extend([
-            f"{shape}_balanced_span4",
-            f"{shape}_acc-local-l3_span4",
+            _build_case_header(shape, row.get("balanced_mode_dir")),
+            _build_case_header(shape, row.get("acc_local_l3_mode_dir")),
         ])
     fieldnames = ["metric", *paired_headers]
     metric_specs = [
@@ -366,8 +372,12 @@ def build_transposed_rows(compare_rows: list[dict[str, Any]]) -> tuple[list[str]
         row = {"metric": metric_name}
         for compare_row in compare_rows:
             shape = f"q{compare_row['q_len']}_kv{compare_row['kv_len']}"
-            row[f"{shape}_balanced_span4"] = balanced_value_fn(compare_row)
-            row[f"{shape}_acc-local-l3_span4"] = acc_value_fn(compare_row)
+            row[_build_case_header(shape, compare_row.get("balanced_mode_dir"))] = (
+                balanced_value_fn(compare_row)
+            )
+            row[_build_case_header(shape, compare_row.get("acc_local_l3_mode_dir"))] = (
+                acc_value_fn(compare_row)
+            )
         rows.append(row)
     return fieldnames, rows
 
@@ -412,8 +422,8 @@ def build_compare_transposed_rows(compare_rows: list[dict[str, Any]]) -> tuple[l
     for row in compare_rows:
         shape = f"q{row['q_len']}_kv{row['kv_len']}"
         compare_headers.extend([
-            f"{shape}_balanced_span4",
-            f"{shape}_acc-local-l3_span4",
+            _build_case_header(shape, row.get("balanced_mode_dir")),
+            _build_case_header(shape, row.get("acc_local_l3_mode_dir")),
         ])
     fieldnames = ["metric", *compare_headers]
     metric_specs = [
@@ -460,8 +470,12 @@ def build_compare_transposed_rows(compare_rows: list[dict[str, Any]]) -> tuple[l
         row = {"metric": metric_name}
         for compare_row in compare_rows:
             shape = f"q{compare_row['q_len']}_kv{compare_row['kv_len']}"
-            row[f"{shape}_balanced_span4"] = balanced_value_fn(compare_row)
-            row[f"{shape}_acc-local-l3_span4"] = acc_value_fn(compare_row)
+            row[_build_case_header(shape, compare_row.get("balanced_mode_dir"))] = (
+                balanced_value_fn(compare_row)
+            )
+            row[_build_case_header(shape, compare_row.get("acc_local_l3_mode_dir"))] = (
+                acc_value_fn(compare_row)
+            )
         rows.append(row)
     return fieldnames, rows
 
@@ -470,6 +484,11 @@ def write_summary_markdown(compare_rows: list[dict[str, Any]], markdown_path: Pa
                            result_root: Path) -> None:
     markdown_path.parent.mkdir(parents=True, exist_ok=True)
     generated_at = datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S %z")
+    mode_dirs = []
+    for row in compare_rows:
+        for mode_dir in (row.get("balanced_mode_dir"), row.get("acc_local_l3_mode_dir")):
+            if mode_dir and mode_dir not in mode_dirs:
+                mode_dirs.append(mode_dir)
     lines = [
         "# P3 Attention-Only PCM Compare",
         "",
@@ -477,7 +496,7 @@ def write_summary_markdown(compare_rows: list[dict[str, Any]], markdown_path: Pa
         f"> result_root: {result_root}",
         "",
         f"- pair_count: {len(compare_rows)}",
-        "- modes: `balanced_span4`, `acc-local-l3_span4`",
+        "- modes: " + ", ".join(f"`{mode_dir}`" for mode_dir in mode_dirs),
         "- key DC metric: `Demand another CCX same node` means `Demand DC Fills From another CCX in same node (pti)`",
         "",
         "## Dry-run + IPC/CPI + DC/L3",

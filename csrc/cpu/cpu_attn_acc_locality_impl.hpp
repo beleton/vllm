@@ -1,5 +1,6 @@
 #pragma once
 
+#include <atomic>
 #include <algorithm>
 #include <cstdio>
 #include <cstdlib>
@@ -241,28 +242,6 @@ inline int32_t get_kv_head_covered_thread_num(const AttentionMetadata& metadata,
   return covered_thread_num;
 }
 
-inline int32_t get_kv_head_covered_thread_offset(
-    const AttentionMetadata& metadata, int32_t kv_head_idx, int32_t subgroup_id,
-    int32_t local_offset) {
-  if (!kv_head_covers_subgroup(metadata, kv_head_idx, subgroup_id)) {
-    return -1;
-  }
-
-  int32_t covered_thread_offset = local_offset;
-  const int32_t start_subgroup = metadata.kv_head_to_subgroup[kv_head_idx];
-  for (int32_t subgroup_offset = 0; subgroup_offset < metadata.group_span;
-       ++subgroup_offset) {
-    const int32_t current_subgroup_id =
-        (start_subgroup + subgroup_offset) % metadata.subgroup_num;
-    if (current_subgroup_id == subgroup_id) {
-      return covered_thread_offset;
-    }
-    covered_thread_offset += metadata.subgroup_thread_num[current_subgroup_id];
-  }
-
-  return -1;
-}
-
 inline at::Tensor build_scheduler_metadata(
     int64_t num_req, int64_t num_heads_q, int64_t num_heads_kv,
     int64_t head_dim, const at::Tensor& seq_lens, at::ScalarType dtype,
@@ -327,12 +306,8 @@ inline at::Tensor build_scheduler_metadata(
                                              metadata->subgroup_num
                                        : 0;
     metadata->kv_head_to_subgroup[kv_head_idx] = start_subgroup;
-    const int32_t covered_thread_num =
-        get_kv_head_covered_thread_num(*metadata, kv_head_idx);
-    metadata->attention_task_num +=
-        std::min(covered_thread_num, legacy_metadata->effective_thread_num);
-    metadata->reduction_task_num +=
-        std::min(covered_thread_num, legacy_metadata->reduction_item_num);
+    metadata->attention_task_num += legacy_metadata->effective_thread_num;
+    metadata->reduction_task_num += legacy_metadata->reduction_item_num;
   }
 
   return metadata_tensor;
@@ -358,12 +333,26 @@ inline std::string format_int_list(const std::vector<int32_t>& values) {
   return ss.str();
 }
 
+inline std::vector<int32_t> build_task_pool(int32_t task_num) {
+  std::vector<int32_t> tasks;
+  tasks.reserve(std::max(0, task_num));
+  for (int32_t task_idx = 0; task_idx < task_num; ++task_idx) {
+    tasks.push_back(task_idx);
+  }
+  return tasks;
+}
+
 inline std::string build_runtime_summary(const AttentionMetadata& metadata) {
+  const std::vector<int32_t> legacy_slot_pool =
+      build_task_pool(metadata.legacy_effective_thread_num);
+  const std::vector<int32_t> reduction_item_pool =
+      build_task_pool(metadata.reduction_item_num);
   std::stringstream ss;
   ss << "CPU attention acc-locality runtime summary\n";
   ss << "  thread_num=" << metadata.thread_num
      << ", subgroup_num=" << metadata.subgroup_num
      << ", group_span=" << metadata.group_span
+     << ", scheduler_mode=local-dynamic"
      << ", legacy_effective_thread_num=" << metadata.legacy_effective_thread_num
      << ", actual_kv_head_num=" << metadata.actual_kv_head_num
      << ", attention_task_num=" << metadata.attention_task_num
@@ -412,47 +401,15 @@ inline std::string build_runtime_summary(const AttentionMetadata& metadata) {
        << ", kv_heads=" << format_int_list(kv_heads) << '\n';
 
     for (int32_t kv_head_idx : kv_heads) {
-      std::vector<int32_t> subgroup_legacy_slots;
       const int32_t covered_thread_num =
           get_kv_head_covered_thread_num(metadata, kv_head_idx);
-      const int32_t subgroup_thread_offset =
-          get_kv_head_covered_thread_offset(metadata, kv_head_idx, subgroup_id, 0);
-      if (subgroup_thread_num > 0) {
-        for (int32_t local_offset = 0; local_offset < subgroup_thread_num;
-             ++local_offset) {
-          const int32_t covered_thread_offset = get_kv_head_covered_thread_offset(
-              metadata, kv_head_idx, subgroup_id, local_offset);
-          for (int32_t legacy_slot = covered_thread_offset;
-               legacy_slot < metadata.legacy_effective_thread_num;
-               legacy_slot += covered_thread_num) {
-            subgroup_legacy_slots.push_back(legacy_slot);
-          }
-        }
-      }
       ss << "    kv_head " << kv_head_idx
          << ": covered_thread_num=" << covered_thread_num
-         << ", subgroup_thread_offset=" << subgroup_thread_offset
-         << ", legacy_slots=" << format_int_list(subgroup_legacy_slots) << '\n';
-    }
-
-    for (int32_t thread_id : thread_ids) {
-      const int32_t local_offset = metadata.thread_to_local_offset[thread_id];
-      for (int32_t kv_head_idx : kv_heads) {
-        std::vector<int32_t> thread_legacy_slots;
-        const int32_t covered_thread_num =
-            get_kv_head_covered_thread_num(metadata, kv_head_idx);
-        const int32_t covered_thread_offset = get_kv_head_covered_thread_offset(
-            metadata, kv_head_idx, subgroup_id, local_offset);
-        for (int32_t legacy_slot = covered_thread_offset;
-             legacy_slot < metadata.legacy_effective_thread_num;
-             legacy_slot += covered_thread_num) {
-          thread_legacy_slots.push_back(legacy_slot);
-        }
-        ss << "    thread " << thread_id
-           << ": kv_head " << kv_head_idx
-           << ", covered_thread_offset=" << covered_thread_offset
-           << ", legacy_slots=" << format_int_list(thread_legacy_slots) << '\n';
+         << ", legacy_slot_pool=" << format_int_list(legacy_slot_pool);
+      if (!reduction_item_pool.empty()) {
+        ss << ", reduction_item_pool=" << format_int_list(reduction_item_pool);
       }
+      ss << '\n';
     }
   }
 
@@ -488,6 +445,16 @@ class AttentionMainLoop
       const std::string summary = build_runtime_summary(metadata);
       std::printf("%s", summary.c_str());
       std::fflush(stdout);
+    }
+    std::vector<std::atomic<int32_t>> attention_task_counters(
+        metadata.actual_kv_head_num);
+    std::vector<std::atomic<int32_t>> reduction_task_counters(
+        metadata.actual_kv_head_num);
+    for (auto& counter : attention_task_counters) {
+      counter.store(0, std::memory_order_relaxed);
+    }
+    for (auto& counter : reduction_task_counters) {
+      counter.store(0, std::memory_order_relaxed);
     }
     std::atomic<int32_t> guard_counter(0);
     std::atomic<int32_t>* guard_counter_ptr = &guard_counter;
@@ -579,7 +546,6 @@ class AttentionMainLoop
       }
 
       const int32_t subgroup_id = metadata.thread_to_group_id[thread_id];
-      const int32_t local_offset = metadata.thread_to_local_offset[thread_id];
       if (subgroup_id < 0 || subgroup_id >= metadata.subgroup_num) {
         continue;
       }
@@ -602,6 +568,9 @@ class AttentionMainLoop
              ++workitem_group_idx) {
           cpu_attention::AttentionWorkItemGroup* const current_workitem_group =
               &curr_workitem_groups[workitem_group_idx];
+          const int32_t global_workitem_group_idx =
+              cu_workitem_num_per_thread[legacy_thread_offset] +
+              workitem_group_idx;
 
           const int32_t current_group_idx = current_workitem_group->req_id;
           const int32_t kv_start_pos = current_workitem_group->kv_split_pos_start;
@@ -609,6 +578,24 @@ class AttentionMainLoop
           const int32_t curr_split_id = current_workitem_group->split_id;
           const int32_t q_token_id_start = current_workitem_group->q_token_id_start;
           const int32_t q_token_num = current_workitem_group->q_token_num;
+          if (cpu_attention::should_log_runtime_trace()) {
+            std::stringstream ss;
+            ss << "CPU attention trace "
+               << "mode=acc-local-l3"
+               << " thread_id=" << thread_id
+               << " subgroup_id=" << subgroup_id
+               << " legacy_thread_offset=" << legacy_thread_offset
+               << " kv_head_idx=" << kv_head_idx
+               << " workitem_group_idx=" << global_workitem_group_idx
+               << " req_id=" << current_group_idx
+               << " q_token_id_start=" << q_token_id_start
+               << " q_token_num=" << q_token_num
+               << " kv_split_pos_start=" << kv_start_pos
+               << " kv_split_pos_end=" << kv_end_pos
+               << " split_id=" << curr_split_id
+               << " local_split_id=" << current_workitem_group->local_split_id;
+            cpu_attention::print_runtime_trace_line(ss.str());
+          }
 
           const int32_t q_end = input->query_start_loc[current_group_idx + 1];
           const int32_t q_start = input->query_start_loc[current_group_idx];
@@ -877,13 +864,13 @@ class AttentionMainLoop
         if (!kv_head_covers_subgroup(metadata, kv_head_idx, subgroup_id)) {
           continue;
         }
-        const int32_t covered_thread_num =
-            get_kv_head_covered_thread_num(metadata, kv_head_idx);
-        const int32_t covered_thread_offset = get_kv_head_covered_thread_offset(
-            metadata, kv_head_idx, subgroup_id, local_offset);
-        for (int32_t legacy_thread_offset = covered_thread_offset;
-             legacy_thread_offset < effective_thread_num;
-             legacy_thread_offset += covered_thread_num) {
+        for (;;) {
+          const int32_t legacy_thread_offset =
+              attention_task_counters[kv_head_idx].fetch_add(
+                  1, std::memory_order_relaxed);
+          if (legacy_thread_offset >= effective_thread_num) {
+            break;
+          }
           run_attention_for_legacy_thread(kv_head_idx, legacy_thread_offset);
         }
       }
@@ -893,13 +880,13 @@ class AttentionMainLoop
         if (!kv_head_covers_subgroup(metadata, kv_head_idx, subgroup_id)) {
           continue;
         }
-        const int32_t covered_thread_num =
-            get_kv_head_covered_thread_num(metadata, kv_head_idx);
-        const int32_t covered_thread_offset = get_kv_head_covered_thread_offset(
-            metadata, kv_head_idx, subgroup_id, local_offset);
-        for (int32_t item_offset = covered_thread_offset;
-             item_offset < reduction_item_num;
-             item_offset += covered_thread_num) {
+        for (;;) {
+          const int32_t item_offset =
+              reduction_task_counters[kv_head_idx].fetch_add(
+                  1, std::memory_order_relaxed);
+          if (item_offset >= reduction_item_num) {
+            break;
+          }
           run_reduction_for_item(kv_head_idx, item_offset);
         }
       }

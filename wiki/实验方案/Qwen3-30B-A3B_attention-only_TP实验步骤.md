@@ -102,22 +102,8 @@ sudo /opt/AMDuProf_5.2-606/bin/AMDPcmSetCapability.sh
 如果要打开当前 `acc-local-l3` runtime 日志：
 
 ```bash
-conda run -n vllm-cpu env VLLM_CPU_ATTN_DEBUG=1 python benchmarks/kernels/cpu/benchmark_cpu_attn_mp.py \
-  --tp-size 2 \
-  --partition-mode global-fixed \
-  --workload prefill-like \
-  --batch-size 1 \
-  --q-len 2048 \
-  --kv-len 2048 \
-  --num-query-heads 32 \
-  --num-kv-heads 16 \
-  --head-size 128 \
-  --block-size 32 \
-  --dtype bfloat16 \
-  --warmup-iters 0 \
-  --iters 1 \
-  --attn-locality-mode acc-local-l3 \
-  --attn-locality-group-span 1 2>&1 | tee benchmark_acc_local_l3_batch1_qhead32_kvhead16_span1_qlen2048.log
+DEBUG_OUT_DIR="${RESULT_ROOT}/qhead_32_kvhead_16/NPS1_TP2/prefill-like/global-fixed/batch_1/q2048_kv2048/acc-local-l3"
+mkdir -p "${DEBUG_OUT_DIR}"
 
 conda run -n vllm-cpu env VLLM_CPU_ATTN_DEBUG=1 python benchmarks/kernels/cpu/benchmark_cpu_attn_mp.py \
   --tp-size 2 \
@@ -133,8 +119,69 @@ conda run -n vllm-cpu env VLLM_CPU_ATTN_DEBUG=1 python benchmarks/kernels/cpu/be
   --dtype bfloat16 \
   --warmup-iters 0 \
   --iters 1 \
+  --attn-locality-mode acc-local-l3 \
+  --attn-locality-group-span 1 2>&1 | tee "${DEBUG_OUT_DIR}/debug.log"
+
+DEBUG_OUT_DIR="${RESULT_ROOT}/qhead_32_kvhead_16/NPS1_TP2/prefill-like/global-fixed/batch_4/q2048_kv2048/balanced"
+mkdir -p "${DEBUG_OUT_DIR}"
+
+conda run -n vllm-cpu env VLLM_CPU_ATTN_DEBUG=1 python benchmarks/kernels/cpu/benchmark_cpu_attn_mp.py \
+  --tp-size 2 \
+  --partition-mode global-fixed \
+  --workload prefill-like \
+  --batch-size 4 \
+  --q-len 2048 \
+  --kv-len 2048 \
+  --num-query-heads 32 \
+  --num-kv-heads 16 \
+  --head-size 128 \
+  --block-size 32 \
+  --dtype bfloat16 \
+  --warmup-iters 0 \
+  --iters 1 \
   --attn-locality-mode balanced \
-  --attn-locality-group-span 1 2>&1 | tee benchmark_balanced_batch1_qhead32_kvhead16_qlen2048.log
+  --attn-locality-group-span 1 2>&1 | tee "${DEBUG_OUT_DIR}/debug.log"
+
+
+TRACE_OUT_DIR="${RESULT_ROOT}/qhead_32_kvhead_16/NPS1_TP2/prefill-like/global-fixed/batch_1/q256_kv256/acc-local-l3"
+mkdir -p "${TRACE_OUT_DIR}"
+
+conda run -n vllm-cpu env VLLM_CPU_ATTN_TRACE=1 python benchmarks/kernels/cpu/benchmark_cpu_attn_mp.py \
+  --tp-size 2 \
+  --partition-mode global-fixed \
+  --workload prefill-like \
+  --batch-size 1 \
+  --q-len 256 \
+  --kv-len 256 \
+  --num-query-heads 32 \
+  --num-kv-heads 16 \
+  --head-size 128 \
+  --block-size 32 \
+  --dtype bfloat16 \
+  --warmup-iters 0 \
+  --iters 1 \
+  --attn-locality-mode acc-local-l3 \
+  --attn-locality-group-span 1 2>&1 | tee "${TRACE_OUT_DIR}/trace.log"
+
+TRACE_OUT_DIR="${RESULT_ROOT}/qhead_32_kvhead_16/NPS1_TP2/prefill-like/global-fixed/batch_1/q256_kv256/balanced"
+mkdir -p "${TRACE_OUT_DIR}"
+
+conda run -n vllm-cpu env VLLM_CPU_ATTN_TRACE=1 python benchmarks/kernels/cpu/benchmark_cpu_attn_mp.py \
+  --tp-size 2 \
+  --partition-mode global-fixed \
+  --workload prefill-like \
+  --batch-size 1 \
+  --q-len 256 \
+  --kv-len 256 \
+  --num-query-heads 32 \
+  --num-kv-heads 16 \
+  --head-size 128 \
+  --block-size 32 \
+  --dtype bfloat16 \
+  --warmup-iters 0 \
+  --iters 1 \
+  --attn-locality-mode balanced \
+  --attn-locality-group-span 1 2>&1 | tee "${TRACE_OUT_DIR}/trace.log"
 ```
 
 ### 定义 dry-run / PCM helper
@@ -358,9 +405,9 @@ done
 ```bash
 
 for locality_mode in balanced acc-local-l3; do
-  for q_len in 64 128 256 512 1024 2048; do
+  for q_len in 64 128 256 512 1024 2048 4096; do
     run_attn_only_pcm_locality \
-      NPS1_TP2 2 prefill-like global-fixed 8 \
+      NPS1_TP2 2 prefill-like global-fixed 1 \
       "${q_len}" "${q_len}" 32 16 \
       "${locality_mode}" 1 \
       20000 80 120 200
@@ -383,7 +430,7 @@ for locality_mode in acc-local-l3 balanced; do
 done
 
 for locality_mode in balanced acc-local-l3; do
-  for q_len in 64 128 256 512 1024 2048; do
+  for q_len in 64 128 256 512 1024 2048 4096; do
     dry_run_attn_only \
       NPS1_TP2 2 prefill-like global-fixed 1 \
       "${q_len}" "${q_len}" 32 16 \

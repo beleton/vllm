@@ -19,6 +19,7 @@
 - [Chiplet背景知识](./术语与背景/Chiplet背景知识.md)
 - [AMDuProf 背景速记](./术语与背景/AMDuProf背景速记.md)
 - [vllm serve 启动到 server ready](./源码分析/vllm_serve启动到server_ready.md)
+- [CPU attention balanced 与 acc-local-l3 线程级任务划分简述](./源码分析/CPU_attention_balanced线程级任务划分简述.md)
 - [CPU attention 并行计算过程 线程任务 workitem 与 tile](./源码分析/CPU_attention并行计算过程_线程任务workitem与tile.md)
 - [Qwen3-30B-A3B attention-only TP 实验步骤](./实验方案/Qwen3-30B-A3B_attention-only_TP实验步骤.md)
 - [Qwen3-30B-A3B bfloat16 统一口径与重跑清单](./实验方案/Qwen3-30B-A3B_bfloat16统一口径与重跑清单.md)
