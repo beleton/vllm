@@ -106,7 +106,7 @@ sudo /opt/AMDuProf_5.2-606/bin/AMDPcmSetCapability.sh
 
 ```bash
 # 运行时日志
-conda run -n vllm-cpu env VLLM_CPU_ATTN_ACC_LOCALITY_DEBUG=1 python benchmarks/kernels/cpu/benchmark_cpu_attn_mp.py \
+conda run -n vllm-cpu env VLLM_CPU_ATTN_DEBUG=1 python benchmarks/kernels/cpu/benchmark_cpu_attn_mp.py \
   --tp-size 2 \
   --partition-mode global-fixed \
   --workload prefill-like \
@@ -120,7 +120,6 @@ conda run -n vllm-cpu env VLLM_CPU_ATTN_ACC_LOCALITY_DEBUG=1 python benchmarks/k
   --warmup-iters 0 \
   --iters 1 \
   --attn-locality-mode acc-local-l3 2>&1 | tee benchmark_cpu_attn_mp.log
-  
 ```
 
 ### 4.2 定义 dry-run / PCM helper
@@ -140,8 +139,6 @@ dry_run_attn_only() {
   local out_dir="${RESULT_ROOT}/${exp_tag}/${workload}/${mode}/batch_${batch_size}/q${q_len}_kv${kv_len}/${locality_mode}"
 
   mkdir -p "${out_dir}"
-  lscpu -J -e=CPU,CORE,NODE > "${out_dir}/lscpu_topology.json"
-  numactl -H > "${out_dir}/numactl_h.txt"
 
   env LD_PRELOAD="${LD_PRELOAD:-}" \
       LD_LIBRARY_PATH="${VLLM_ENV}/lib${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}" \
@@ -183,8 +180,6 @@ run_attn_only_pcm() {
   local out_dir="${RESULT_ROOT}/${exp_tag}/${workload}/${mode}/batch_${batch_size}/q${q_len}_kv${kv_len}"
 
   mkdir -p "${out_dir}"
-  lscpu -J -e=CPU,CORE,NODE > "${out_dir}/lscpu_topology.json"
-  numactl -H > "${out_dir}/numactl_h.txt"
 
   if [ "${benchmark_min_runtime_s}" -le "${pcm_duration_s}" ]; then
     echo "benchmark_min_runtime_s must be > pcm_duration_s" >&2
@@ -233,8 +228,6 @@ run_attn_only_pcm_locality() {
   local out_dir="${RESULT_ROOT}/${exp_tag}/${workload}/${mode}/batch_${batch_size}/q${q_len}_kv${kv_len}/${locality_mode}"
 
   mkdir -p "${out_dir}"
-  lscpu -J -e=CPU,CORE,NODE > "${out_dir}/lscpu_topology.json"
-  numactl -H > "${out_dir}/numactl_h.txt"
 
   if [ "${benchmark_min_runtime_s}" -le "${pcm_duration_s}" ]; then
     echo "benchmark_min_runtime_s must be > pcm_duration_s" >&2

@@ -1,29 +1,35 @@
-2026-04-14 19:38:05 +0800
-- `wiki/`、`test_results/`、`tasks.json` 已承接当前主线结论、实验结果与待办；`process.txt` 只保留仍会影响后续复现、实验执行或问题排查的交接事项。
+2026-04-22 23:20:20 +0800
+- `VLLM_CPU_ATTN_PROFILE=1` 现支持静默的进程内累计口径；`benchmark_cpu_attn_mp.py` 会在 worker 内设置 `VLLM_CPU_ATTN_PROFILE_SILENT=1`，并在 warmup 后单独 reset runtime profile，因此最终 `rank_results[*].profile` 与 `profile_summary` 只覆盖正式迭代的 runtime。
+- 复用该 profiling 口径时直接走 `cpu_attn_reset_timing_profile()`、`cpu_attn_reset_runtime_timing_profile()`、`cpu_attn_get_timing_profile()`，不要再解析 `profile.log`。
+- 静默累计模式不记录热点循环里的 fetch timing，`attention_counter_fetch_ns/reduction_counter_fetch_ns` 当前会是 `0`；若需要旧的逐调用 stdout profile 文本，直接调用 attention op 并只设置 `VLLM_CPU_ATTN_PROFILE=1`。
+
+2026-04-20 21:56:51 +0800
+- 深挖 `acc-local-l3` 退化原因时，PCM 数值优先回到各 case 原始 `report-cumulative.csv`，不要只依赖 `summary.csv` 的二次汇总。
 
 2026-04-09 14:50:23 +0800
 - `cpu_attn_acc_locality` 的 `group_span` 唯一分片修正已完成；旧的“多个 subgroup 重复执行同一批 legacy slot”问题已不再是当前主线。
-- 若继续验证 `acc-local-l3`，直接看 `wiki/源码分析/CPU_attention_acc_locality新kernel实现说明.md`、`wiki/实验结果解读/2026-04-05_Qwen3-30B-A3B_P3_AttnOnly_acc-local-l3对照观察.md` 和 `test_results/P3_AttnOnly/Qwen3-30B-A3B/NPS1_TP2/prefill-like/global-fixed/batch_16/summary.md`。
 - `q128_kv128/acc-local-l3_span4` 当前仍缺 PCM 报告；复用该结果目录时，不要把该点当成完整 PCM 对照。
 
 2026-04-03 15:02:27 +0800
-- 运行 `python setup.py build_ext --inplace`、`pytest`、或任何依赖 `torch.ops._C*` 的命令时，先 `conda activate vllm-cpu`，并显式带 `PYTHONNOUSERSITE=1`，避免误加载 `~/.local/lib/python3.12/site-packages/torch`。
+- 运行 `python setup.py build_ext --inplace`、`pytest` 或任何依赖 `torch.ops._C*` 的命令前，先 `conda activate vllm-cpu`，并显式带 `PYTHONNOUSERSITE=1`，避免误加载 `~/.local/lib/python3.12/site-packages/torch`。
+
+2026-04-02 17:19:41 +0800
+- `IBS` 来源级平均延迟口径依赖 `AMDuProfCLI collect -e event=ibs-op,ibsop-l3miss=1,call-graph`；升级 `AMDuProf` 版本后，先复核 `AMDuProf_Collect_Help.txt`、`ibs_op_ld.json`、`ibs_op_ld_lat.json`、`0x1a_0x1.xml` 再复用现有公式。
 
 2026-04-02 09:15:24 +0800
 - `attention-only + AMDuProfPcm` 口径下，benchmark 自身的 `summary.json` 可能不落盘；整理结果时优先使用 `dry_run_summary.json + report.json/report-cumulative.csv`。
 
 2026-04-01 12:10:00 +0800
-- CPU `TP=2` 场景下，`AMDuProfCLI hotspots` 的 launcher 模式会被 `spawn` 路径打断；正式口径改为先启动目标，再按 `Worker_TP* pid` 用 `AMDuProfCLI collect -p <worker_pids>` attach。
-- `IBS L3-miss` 当前仍可保留 launcher 模式；仅在复现出新的兼容性问题时再调整。
+- CPU `TP=2` 场景下，`AMDuProfCLI hotspots` 正式口径改为先启动目标，再按 `Worker_TP* pid` 用 `AMDuProfCLI collect -p <worker_pids>` attach；`IBS L3-miss` 仍可保留 launcher 模式，除非复现出新的兼容性问题。
 
 2026-04-01 00:02:04 +0800
-- 若 `strict-batch` 在 CPU `TP=2` 场景报 `create shm in SHMManager failed. errno: 17`，先按端口前缀检查 `/dev/shm/<port>-tp:0-[0-1]-cpushm_*`。
-- 确认是孤儿文件后，只删除对应端口那一对 `cpushm` 文件，不要清空整个 `/dev/shm`。
+- 若 `strict-batch` 在 CPU `TP=2` 场景报 `create shm in SHMManager failed. errno: 17`，先按端口前缀检查 `/dev/shm/<port>-tp:0-[0-1]-cpushm_*`；确认是孤儿文件后，只删除对应端口那一对 `cpushm` 文件，不要清空整个 `/dev/shm`。
 
 2026-03-30 22:48:30 +0800
-- `AMDuProfPcm` 在 TP 场景下即使已生成 `report-timeseries.csv/report-cumulative.csv`，launcher 也可能不自动退出；`-d` 只能当采样上界，不能当正常收尾机制。
-- 若报告已落盘但命令不退，先发 `SIGTERM` 或 `SIGINT`，等待补齐 `session.uprof/report.html`；仅在温和收尾无效时再 `kill -9`。
+- `AMDuProfPcm` 在 TP 场景下即使已生成 `report-timeseries.csv/report-cumulative.csv`，launcher 也可能不自动退出；若报告已落盘但命令不退，先发 `SIGTERM` 或 `SIGINT`，仅在温和收尾无效时再 `kill -9`。
 
-2026-04-02 17:19:41 +0800
-- `IBS` 来源级平均延迟口径依赖 `collect` 时显式带 `-e event=ibs-op,ibsop-l3miss=1,call-graph`。
-- 若后续升级 `AMDuProf` 版本，先复核 `AMDuProf_Collect_Help.txt`、`ibs_op_ld.json`、`ibs_op_ld_lat.json`、`0x1a_0x1.xml` 中的定义，再复用现有公式。
+2026-05-07 13:40:00 +0800
+- `tools/attn_only/llc_occupancy_compare.py` 已可直接汇总 `test_results/P4_AttnOnly_L3Residency/.../span1/occupancy`，默认按 `ffff` 对比 `0001`，输出 `occupancy_compare_summary.csv`。运行入口：`conda run -n vllm-cpu python -m tools.attn_only.llc_occupancy_compare --result-root <occupancy_root>`.
+
+2026-05-07 14:27:00 +0800
+- `llc_occupancy_compare` 已切到单页 HTML 报告，默认输出为 `occupancy_compare.html`，页面内同时包含 `Total runtime compare`、`Total occupancy across lengths` 和按长度展开的 `L3_00` 到 `Total` 对照图，所有 mean/peak 统一按 MB 输出。

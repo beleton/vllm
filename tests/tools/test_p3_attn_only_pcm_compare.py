@@ -37,7 +37,8 @@ def _write_case(root: Path,
                 slowest_rank_mean_ms: float,
                 session_name: str | None,
                 metrics: dict[str, float] | None,
-                group_span: int = 4):
+                group_span: int = 4,
+                profile_payload: dict | None = None):
     case_dir = (root / "prefill-like" / "global-fixed" / "batch_16" /
                 f"q{q_len}_kv{kv_len}" / mode_dir)
     case_dir.mkdir(parents=True, exist_ok=True)
@@ -71,6 +72,9 @@ def _write_case(root: Path,
         json.dumps(dry_run_summary), encoding="utf-8")
 
     if session_name is None or metrics is None:
+        if profile_payload is not None:
+            (case_dir / "profile.json").write_text(
+                json.dumps(profile_payload), encoding="utf-8")
         return case_dir
 
     report_dir = case_dir / "pcm_l3_dc" / session_name
@@ -88,7 +92,166 @@ def _write_case(root: Path,
         ],
     }
     (report_dir / "report.json").write_text(json.dumps(report), encoding="utf-8")
+    if profile_payload is not None:
+        (case_dir / "profile.json").write_text(
+            json.dumps(profile_payload), encoding="utf-8")
     return case_dir
+
+
+def _profile_payload(mode_name: str,
+                     slowest_rank_mean_ms: float,
+                     scheduler_metadata_avg_ns: float,
+                     attention_task_body_avg_ns: float,
+                     execute_attention_avg_ns: float,
+                     attention_task_non_execute_pct: float,
+                     slowest_rank_attention_parallelism: float,
+                     slowest_rank_execute_parallelism: float,
+                     legacy_scheduler_metadata_avg_ns: float | None = None,
+                     locality_metadata_build_avg_ns: float | None = None):
+    scheduler_call_count = 2
+    runtime_call_count = 4
+    attention_task_body_ns = 14_400_000_000
+    execute_attention_ns = attention_task_body_ns * (
+        1.0 - attention_task_non_execute_pct / 100.0)
+    slowest_elapsed_ms = 100.0
+    slowest_attention_task_body_ns = (
+        slowest_rank_attention_parallelism * slowest_elapsed_ms * 1e6)
+    slowest_execute_attention_ns = (
+        slowest_rank_execute_parallelism * slowest_elapsed_ms * 1e6)
+    scheduler = {
+        "call_count": scheduler_call_count,
+        "scheduler_metadata_ns":
+        scheduler_metadata_avg_ns * scheduler_call_count,
+        "scheduler_metadata_avg_ns": scheduler_metadata_avg_ns,
+    }
+    if legacy_scheduler_metadata_avg_ns is not None:
+        scheduler["legacy_scheduler_metadata_ns"] = (
+            legacy_scheduler_metadata_avg_ns * scheduler_call_count)
+    if locality_metadata_build_avg_ns is not None:
+        scheduler["locality_metadata_build_ns"] = (
+            locality_metadata_build_avg_ns * scheduler_call_count)
+
+    runtime = {
+        "call_count": runtime_call_count,
+        "attention_task_body_ns": attention_task_body_ns,
+        "attention_task_count": (
+            attention_task_body_ns / attention_task_body_avg_ns),
+        "attention_task_body_avg_ns": attention_task_body_avg_ns,
+        "reduction_task_body_ns": 0,
+        "reduction_task_count": 0,
+        "reduction_task_body_avg_ns": None,
+        "execute_attention_ns": execute_attention_ns,
+        "execute_attention_count": (
+            execute_attention_ns / execute_attention_avg_ns),
+        "execute_attention_avg_ns": execute_attention_avg_ns,
+        "attention_task_non_execute_ns":
+        attention_task_body_ns - execute_attention_ns,
+    }
+    if mode_name == "acc-local-l3":
+        runtime["attention_counter_fetch_ns"] = 0
+        runtime["attention_counter_fetch_count"] = 0
+        runtime["reduction_counter_fetch_ns"] = 0
+        runtime["reduction_counter_fetch_count"] = 0
+
+    return {
+        "workload": "prefill-like",
+        "batch_size": 16,
+        "requested_lengths": {
+            "q_len": 64,
+            "kv_len": 64,
+        },
+        "resolved_lengths": {
+            "q_len": 64,
+            "kv_len": 64,
+        },
+        "result_shape_dirname": "batch_16/q64_KV_64",
+        "head_plan": {
+            "partition_mode": "global-fixed",
+            "tp_size": 2,
+            "global_num_query_heads": 32,
+            "global_num_kv_heads": 4,
+            "local_num_query_heads": 16,
+            "local_num_kv_heads": 2,
+        },
+        "attn_locality_mode": mode_name,
+        "attn_locality_group_span": 4,
+        "slowest_rank_mean_ms": slowest_rank_mean_ms,
+        "profile_summary": {
+            "mode": mode_name,
+            "scheduler": scheduler,
+            "runtime": runtime,
+        },
+        "rank_results": [
+            {
+                "rank": 0,
+                "elapsed_ms": slowest_elapsed_ms,
+                "result": {
+                    "time_mean_ms": slowest_rank_mean_ms,
+                },
+                "profile": {
+                    "mode": mode_name,
+                    "scheduler": scheduler,
+                    "runtime": {
+                        "call_count": runtime_call_count / 2,
+                        "attention_task_body_ns":
+                        slowest_attention_task_body_ns,
+                        "attention_task_count": (
+                            slowest_attention_task_body_ns /
+                            attention_task_body_avg_ns),
+                        "attention_task_body_avg_ns":
+                        attention_task_body_avg_ns,
+                        "reduction_task_body_ns": 0,
+                        "reduction_task_count": 0,
+                        "reduction_task_body_avg_ns": None,
+                        "execute_attention_ns":
+                        slowest_execute_attention_ns,
+                        "execute_attention_count": (
+                            slowest_execute_attention_ns /
+                            execute_attention_avg_ns),
+                        "execute_attention_avg_ns":
+                        execute_attention_avg_ns,
+                        "attention_task_non_execute_ns":
+                        slowest_attention_task_body_ns -
+                        slowest_execute_attention_ns,
+                    },
+                },
+            },
+            {
+                "rank": 1,
+                "elapsed_ms": 90.0,
+                "result": {
+                    "time_mean_ms": slowest_rank_mean_ms * 0.95,
+                },
+                "profile": {
+                    "mode": mode_name,
+                    "scheduler": scheduler,
+                    "runtime": {
+                        "call_count": runtime_call_count / 2,
+                        "attention_task_body_ns":
+                        slowest_attention_task_body_ns * 0.9,
+                        "attention_task_count": (
+                            slowest_attention_task_body_ns * 0.9 /
+                            attention_task_body_avg_ns),
+                        "attention_task_body_avg_ns":
+                        attention_task_body_avg_ns,
+                        "reduction_task_body_ns": 0,
+                        "reduction_task_count": 0,
+                        "reduction_task_body_avg_ns": None,
+                        "execute_attention_ns":
+                        slowest_execute_attention_ns * 0.9,
+                        "execute_attention_count": (
+                            slowest_execute_attention_ns * 0.9 /
+                            execute_attention_avg_ns),
+                        "execute_attention_avg_ns":
+                        execute_attention_avg_ns,
+                        "attention_task_non_execute_ns":
+                        (slowest_attention_task_body_ns -
+                         slowest_execute_attention_ns) * 0.9,
+                    },
+                },
+            },
+        ],
+    }
 
 
 class TestP3AttnOnlyPcmCompare(unittest.TestCase):
@@ -102,8 +265,9 @@ class TestP3AttnOnlyPcmCompare(unittest.TestCase):
         self.assertIsInstance(args, Namespace)
         self.assertEqual(
             Path(
-                "test_results/P3_AttnOnly/Qwen3-30B-A3B/NPS1_TP2/"
-                "prefill-like/global-fixed/batch_16"),
+                "test_results/P3_AttnOnly/Qwen3-30B-A3B/"
+                "qhead_32_kvhead_16/NPS1_TP2/"
+                "prefill-like/global-fixed/batch_1"),
             args.result_root,
         )
 
@@ -274,6 +438,190 @@ class TestP3AttnOnlyPcmCompare(unittest.TestCase):
             row_128 = rows[1]
             self.assertIsNone(row_128["acc_local_l3_l3_access_pti"])
             self.assertEqual("missing report.json", row_128["acc_local_l3_note"])
+
+    def test_build_compare_rows_includes_profile_analysis_metrics(self):
+        module = importlib.import_module("tools.p3_attn_only.pcm_compare")
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            _write_case(
+                root,
+                q_len=64,
+                kv_len=64,
+                mode_dir="balanced",
+                mode_name="balanced",
+                slowest_rank_mean_ms=100.0,
+                session_name=None,
+                metrics=None,
+                group_span=1,
+                profile_payload=_profile_payload(
+                    mode_name="balanced",
+                    slowest_rank_mean_ms=100.0,
+                    scheduler_metadata_avg_ns=100.0,
+                    attention_task_body_avg_ns=1000.0,
+                    execute_attention_avg_ns=900.0,
+                    attention_task_non_execute_pct=10.0,
+                    slowest_rank_attention_parallelism=80.0,
+                    slowest_rank_execute_parallelism=72.0,
+                ),
+            )
+            _write_case(
+                root,
+                q_len=64,
+                kv_len=64,
+                mode_dir="acc-local-l3",
+                mode_name="acc-local-l3",
+                slowest_rank_mean_ms=108.0,
+                session_name=None,
+                metrics=None,
+                group_span=1,
+                profile_payload=_profile_payload(
+                    mode_name="acc-local-l3",
+                    slowest_rank_mean_ms=108.0,
+                    scheduler_metadata_avg_ns=112.0,
+                    attention_task_body_avg_ns=1050.0,
+                    execute_attention_avg_ns=945.0,
+                    attention_task_non_execute_pct=10.0,
+                    slowest_rank_attention_parallelism=72.0,
+                    slowest_rank_execute_parallelism=68.4,
+                    legacy_scheduler_metadata_avg_ns=105.0,
+                    locality_metadata_build_avg_ns=7.0,
+                ),
+            )
+
+            rows = module.build_compare_rows(root)
+
+            self.assertEqual(1, len(rows))
+            row = rows[0]
+            self.assertEqual(100.0, row["balanced_profile_scheduler_metadata_avg_ns"])
+            self.assertEqual(
+                112.0, row["acc_local_l3_profile_scheduler_metadata_avg_ns"])
+            self.assertEqual(
+                105.0,
+                row["acc_local_l3_profile_legacy_scheduler_metadata_avg_ns"],
+            )
+            self.assertEqual(
+                7.0,
+                row["acc_local_l3_profile_locality_metadata_build_avg_ns"],
+            )
+            self.assertEqual(
+                1000.0, row["balanced_profile_attention_task_body_avg_ns"])
+            self.assertEqual(
+                945.0, row["acc_local_l3_profile_execute_attention_avg_ns"])
+            self.assertEqual(
+                80.0,
+                row["balanced_profile_slowest_rank_attention_parallelism"],
+            )
+            self.assertEqual(
+                68.4,
+                row["acc_local_l3_profile_slowest_rank_execute_parallelism"],
+            )
+            self.assertAlmostEqual(
+                12.0,
+                row["profile_scheduler_metadata_avg_ns_delta_pct"],
+            )
+            self.assertAlmostEqual(
+                5.0,
+                row["profile_execute_attention_avg_ns_delta_pct"],
+            )
+            self.assertAlmostEqual(
+                -10.0,
+                row["profile_slowest_rank_attention_parallelism_delta_pct"],
+            )
+
+    def test_build_outputs_writes_profile_analysis_rows(self):
+        module = importlib.import_module("tools.p3_attn_only.pcm_compare")
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            _write_case(
+                root,
+                q_len=64,
+                kv_len=64,
+                mode_dir="balanced",
+                mode_name="balanced",
+                slowest_rank_mean_ms=100.0,
+                session_name=None,
+                metrics=None,
+                group_span=1,
+                profile_payload=_profile_payload(
+                    mode_name="balanced",
+                    slowest_rank_mean_ms=100.0,
+                    scheduler_metadata_avg_ns=100.0,
+                    attention_task_body_avg_ns=1000.0,
+                    execute_attention_avg_ns=900.0,
+                    attention_task_non_execute_pct=10.0,
+                    slowest_rank_attention_parallelism=80.0,
+                    slowest_rank_execute_parallelism=72.0,
+                ),
+            )
+            _write_case(
+                root,
+                q_len=64,
+                kv_len=64,
+                mode_dir="acc-local-l3",
+                mode_name="acc-local-l3",
+                slowest_rank_mean_ms=108.0,
+                session_name=None,
+                metrics=None,
+                group_span=1,
+                profile_payload=_profile_payload(
+                    mode_name="acc-local-l3",
+                    slowest_rank_mean_ms=108.0,
+                    scheduler_metadata_avg_ns=112.0,
+                    attention_task_body_avg_ns=1050.0,
+                    execute_attention_avg_ns=945.0,
+                    attention_task_non_execute_pct=10.0,
+                    slowest_rank_attention_parallelism=72.0,
+                    slowest_rank_execute_parallelism=68.4,
+                    legacy_scheduler_metadata_avg_ns=105.0,
+                    locality_metadata_build_avg_ns=7.0,
+                ),
+            )
+
+            summary_csv, compare_csv, summary_md = module.build_outputs(root)
+
+            with Path(summary_csv).open(encoding="utf-8") as f:
+                summary_rows = list(csv.DictReader(f))
+            by_metric = {row["metric"]: row for row in summary_rows}
+            self.assertEqual(
+                "100.00",
+                by_metric["Scheduler Metadata Avg (ns)"]["q64_kv64_balanced"],
+            )
+            self.assertEqual(
+                "112.00",
+                by_metric["Scheduler Metadata Avg (ns)"][
+                    "q64_kv64_acc-local-l3"],
+            )
+            self.assertEqual(
+                "-10.00",
+                by_metric["Slowest Rank Attention Effective Threads Delta (%)"][
+                    "q64_kv64_acc-local-l3"],
+            )
+
+            with Path(compare_csv).open(encoding="utf-8") as f:
+                compare_rows = list(csv.DictReader(f))
+            compare_by_metric = {row["metric"]: row for row in compare_rows}
+            self.assertEqual(
+                "105.00",
+                compare_by_metric["Legacy Scheduler Metadata Avg (ns)"][
+                    "q64_kv64_acc-local-l3"],
+            )
+            self.assertEqual(
+                "5.00",
+                compare_by_metric["Execute Attention Avg Delta (%)"][
+                    "q64_kv64_acc-local-l3"],
+            )
+
+            markdown = Path(summary_md).read_text(encoding="utf-8")
+            self.assertIn(
+                "| Scheduler Metadata Avg (ns) | 100.00 | 112.00 |",
+                markdown,
+            )
+            self.assertIn(
+                "| Slowest Rank Attention Effective Threads Delta (%) | - | -10.00 |",
+                markdown,
+            )
 
     def test_build_outputs_writes_csv_and_markdown_with_dc_columns(self):
         module = importlib.import_module("tools.p3_attn_only.pcm_compare")

@@ -18,6 +18,11 @@ from benchmarks.kernels.cpu.benchmark_cpu_attn import (
     run_attention_iters,
 )
 from vllm import envs
+from vllm._custom_ops import (
+    cpu_attn_get_timing_profile,
+    cpu_attn_reset_runtime_timing_profile,
+    cpu_attn_reset_timing_profile,
+)
 from vllm.platforms.cpu import CpuPlatform
 from vllm.utils.argparse_utils import FlexibleArgumentParser
 from vllm.utils.torch_utils import STR_DTYPE_TO_TORCH_DTYPE
@@ -44,15 +49,238 @@ def _is_truthy_env_value(value: str | None) -> bool:
     return value is not None and value != "" and value != "0"
 
 
-def configure_trace_env_for_rank(rank: int) -> None:
-    if "VLLM_CPU_ATTN_TRACE" not in os.environ:
+def configure_attention_debug_env_for_rank(rank: int) -> None:
+    if "VLLM_CPU_ATTN_DEBUG" not in os.environ:
         return
 
-    os.environ["VLLM_CPU_ATTN_TRACE_RANK"] = str(rank)
+    os.environ["VLLM_CPU_ATTN_DEBUG_RANK"] = str(rank)
     if rank != 0 and not _is_truthy_env_value(
-        os.environ.get("VLLM_CPU_ATTN_TRACE_ALL_RANKS")
+        os.environ.get("VLLM_CPU_ATTN_DEBUG_ALL_RANKS")
     ):
-        os.environ["VLLM_CPU_ATTN_TRACE"] = "0"
+        os.environ["VLLM_CPU_ATTN_DEBUG"] = "0"
+
+
+def configure_trace_env_for_rank(rank: int) -> None:
+    configure_attention_debug_env_for_rank(rank)
+
+
+def attention_profile_enabled() -> bool:
+    return _is_truthy_env_value(os.environ.get("VLLM_CPU_ATTN_PROFILE"))
+
+
+def configure_attention_profile_env() -> bool:
+    if not attention_profile_enabled():
+        return False
+    os.environ.setdefault("VLLM_CPU_ATTN_PROFILE_SILENT", "1")
+    return True
+
+
+def reset_attention_profile() -> None:
+    if attention_profile_enabled():
+        cpu_attn_reset_timing_profile()
+
+
+def reset_attention_runtime_profile() -> None:
+    if attention_profile_enabled():
+        cpu_attn_reset_runtime_timing_profile()
+
+
+def _finalize_scheduler_profile(
+    profile: dict[str, Any],
+    locality_mode: str,
+) -> dict[str, Any]:
+    call_count = profile["call_count"]
+    result = {
+        "call_count": call_count,
+        "scheduler_metadata_ns": profile["scheduler_metadata_ns"],
+        "scheduler_metadata_avg_ns": (
+            profile["scheduler_metadata_ns"] / call_count if call_count > 0 else None
+        ),
+    }
+    if locality_mode == "acc-local-l3":
+        result["legacy_scheduler_metadata_ns"] = profile[
+            "legacy_scheduler_metadata_ns"
+        ]
+        result["locality_metadata_build_ns"] = profile[
+            "locality_metadata_build_ns"
+        ]
+    return result
+
+
+def _finalize_runtime_profile(
+    profile: dict[str, Any],
+    locality_mode: str,
+) -> dict[str, Any]:
+    attention_task_count = profile["attention_task_count"]
+    reduction_task_count = profile["reduction_task_count"]
+    execute_attention_count = profile["execute_attention_count"]
+    result = {
+        "call_count": profile["call_count"],
+        "attention_task_body_ns": profile["attention_task_body_ns"],
+        "attention_task_count": attention_task_count,
+        "attention_task_body_avg_ns": (
+            profile["attention_task_body_ns"] / attention_task_count
+            if attention_task_count > 0
+            else None
+        ),
+        "reduction_task_body_ns": profile["reduction_task_body_ns"],
+        "reduction_task_count": reduction_task_count,
+        "reduction_task_body_avg_ns": (
+            profile["reduction_task_body_ns"] / reduction_task_count
+            if reduction_task_count > 0
+            else None
+        ),
+        "execute_attention_ns": profile["execute_attention_ns"],
+        "execute_attention_count": execute_attention_count,
+        "execute_attention_avg_ns": (
+            profile["execute_attention_ns"] / execute_attention_count
+            if execute_attention_count > 0
+            else None
+        ),
+        "attention_task_non_execute_ns": max(
+            profile["attention_task_body_ns"] - profile["execute_attention_ns"],
+            0,
+        ),
+    }
+    if locality_mode == "acc-local-l3":
+        result["attention_counter_fetch_ns"] = profile[
+            "attention_counter_fetch_ns"
+        ]
+        result["attention_counter_fetch_count"] = profile[
+            "attention_counter_fetch_count"
+        ]
+        result["reduction_counter_fetch_ns"] = profile[
+            "reduction_counter_fetch_ns"
+        ]
+        result["reduction_counter_fetch_count"] = profile[
+            "reduction_counter_fetch_count"
+        ]
+    elif profile["counter_fetch_ns"] or profile["counter_fetch_count"]:
+        result["counter_fetch_ns"] = profile["counter_fetch_ns"]
+        result["counter_fetch_count"] = profile["counter_fetch_count"]
+    return result
+
+
+def collect_attention_profile(locality_mode: str) -> dict[str, Any] | None:
+    if not attention_profile_enabled():
+        return None
+
+    profile_snapshot = json.loads(cpu_attn_get_timing_profile())
+    profile_key = "balanced" if locality_mode == "balanced" else "acc_locality"
+    selected_profile = profile_snapshot[profile_key]
+    return {
+        "mode": locality_mode,
+        "scheduler": _finalize_scheduler_profile(
+            selected_profile["scheduler"], locality_mode
+        ),
+        "runtime": _finalize_runtime_profile(
+            selected_profile["runtime"], locality_mode
+        ),
+    }
+
+
+def aggregate_attention_profiles(
+    profiles: list[dict[str, Any] | None],
+) -> dict[str, Any] | None:
+    collected_profiles = [profile for profile in profiles if profile is not None]
+    if not collected_profiles:
+        return None
+
+    mode = collected_profiles[0]["mode"]
+    assert all(profile["mode"] == mode for profile in collected_profiles)
+
+    scheduler_call_count = sum(
+        profile["scheduler"]["call_count"] for profile in collected_profiles
+    )
+    scheduler_metadata_ns = sum(
+        profile["scheduler"]["scheduler_metadata_ns"] for profile in collected_profiles
+    )
+    attention_task_body_ns = sum(
+        profile["runtime"]["attention_task_body_ns"] for profile in collected_profiles
+    )
+    attention_task_count = sum(
+        profile["runtime"]["attention_task_count"] for profile in collected_profiles
+    )
+    reduction_task_body_ns = sum(
+        profile["runtime"]["reduction_task_body_ns"] for profile in collected_profiles
+    )
+    reduction_task_count = sum(
+        profile["runtime"]["reduction_task_count"] for profile in collected_profiles
+    )
+    execute_attention_ns = sum(
+        profile["runtime"]["execute_attention_ns"] for profile in collected_profiles
+    )
+    execute_attention_count = sum(
+        profile["runtime"]["execute_attention_count"] for profile in collected_profiles
+    )
+    aggregate = {
+        "mode": mode,
+        "scheduler": {
+            "call_count": scheduler_call_count,
+            "scheduler_metadata_ns": scheduler_metadata_ns,
+            "scheduler_metadata_avg_ns": (
+                scheduler_metadata_ns / scheduler_call_count
+                if scheduler_call_count > 0
+                else None
+            ),
+        },
+        "runtime": {
+            "call_count": sum(
+                profile["runtime"]["call_count"] for profile in collected_profiles
+            ),
+            "attention_task_body_ns": attention_task_body_ns,
+            "attention_task_count": attention_task_count,
+            "attention_task_body_avg_ns": (
+                attention_task_body_ns / attention_task_count
+                if attention_task_count > 0
+                else None
+            ),
+            "reduction_task_body_ns": reduction_task_body_ns,
+            "reduction_task_count": reduction_task_count,
+            "reduction_task_body_avg_ns": (
+                reduction_task_body_ns / reduction_task_count
+                if reduction_task_count > 0
+                else None
+            ),
+            "execute_attention_ns": execute_attention_ns,
+            "execute_attention_count": execute_attention_count,
+            "execute_attention_avg_ns": (
+                execute_attention_ns / execute_attention_count
+                if execute_attention_count > 0
+                else None
+            ),
+            "attention_task_non_execute_ns": max(
+                attention_task_body_ns - execute_attention_ns,
+                0,
+            ),
+        },
+    }
+    if mode == "acc-local-l3":
+        aggregate["scheduler"]["legacy_scheduler_metadata_ns"] = sum(
+            profile["scheduler"]["legacy_scheduler_metadata_ns"]
+            for profile in collected_profiles
+        )
+        aggregate["scheduler"]["locality_metadata_build_ns"] = sum(
+            profile["scheduler"]["locality_metadata_build_ns"]
+            for profile in collected_profiles
+        )
+        aggregate["runtime"]["attention_counter_fetch_ns"] = sum(
+            profile["runtime"]["attention_counter_fetch_ns"]
+            for profile in collected_profiles
+        )
+        aggregate["runtime"]["attention_counter_fetch_count"] = sum(
+            profile["runtime"]["attention_counter_fetch_count"]
+            for profile in collected_profiles
+        )
+        aggregate["runtime"]["reduction_counter_fetch_ns"] = sum(
+            profile["runtime"]["reduction_counter_fetch_ns"]
+            for profile in collected_profiles
+        )
+        aggregate["runtime"]["reduction_counter_fetch_count"] = sum(
+            profile["runtime"]["reduction_counter_fetch_count"]
+            for profile in collected_profiles
+        )
+    return aggregate
 
 
 def resolve_head_shard_plan(
@@ -284,7 +512,8 @@ def _rank_worker(
     result_queue: mp.Queue,
 ) -> None:
     try:
-        configure_trace_env_for_rank(rank)
+        configure_attention_debug_env_for_rank(rank)
+        profile_enabled = configure_attention_profile_env()
         tp_size = args_dict["tp_size"]
         omp_cpuids = resolve_local_omp_cpuid(
             omp_cpuids=args_dict["omp_threads_bind"],
@@ -324,35 +553,46 @@ def _rank_worker(
             args_dict["block_size"], STR_DTYPE_TO_TORCH_DTYPE[args_dict["dtype"]]
         )
 
-        prepared = prepare_attention_run(
-            seq_lens=seq_lens,
-            num_heads=(
-                shard_plan.local_num_query_heads,
-                shard_plan.local_num_kv_heads,
-            ),
-            head_size=args_dict["head_size"],
-            sliding_window=args_dict["sliding_window"],
-            dtype=STR_DTYPE_TO_TORCH_DTYPE[args_dict["dtype"]],
-            block_size=args_dict["block_size"],
-            num_blocks=args_dict["num_blocks"],
-            use_sink=args_dict["use_sink"],
-            enable_kv_split=args_dict["enable_kv_split"],
-            isa=isa,
-            seed=args_dict["seed"] + rank,
-            locality_mode=args_dict["attn_locality_mode"],
-            locality_group_span=args_dict["attn_locality_group_span"],
-        )
-        if args_dict["warmup_iters"] > 0:
-            run_attention_iters(prepared, args_dict["warmup_iters"])
+        with torch.inference_mode():
+            if profile_enabled:
+                reset_attention_profile()
+            prepared = prepare_attention_run(
+                seq_lens=seq_lens,
+                num_heads=(
+                    shard_plan.local_num_query_heads,
+                    shard_plan.local_num_kv_heads,
+                ),
+                head_size=args_dict["head_size"],
+                sliding_window=args_dict["sliding_window"],
+                dtype=STR_DTYPE_TO_TORCH_DTYPE[args_dict["dtype"]],
+                block_size=args_dict["block_size"],
+                num_blocks=args_dict["num_blocks"],
+                use_sink=args_dict["use_sink"],
+                enable_kv_split=args_dict["enable_kv_split"],
+                isa=isa,
+                seed=args_dict["seed"] + rank,
+                # Keep only the synthetic request/block layout identical across ranks.
+                block_table_seed=args_dict["seed"],
+                locality_mode=args_dict["attn_locality_mode"],
+                locality_group_span=args_dict["attn_locality_group_span"],
+            )
+            if profile_enabled:
+                reset_attention_runtime_profile()
 
-        barrier.wait()
-        start_time = time.perf_counter_ns()
-        result = measure_attention_run(
-            prepared=prepared,
-            iters=args_dict["iters"],
-            min_runtime_s=args_dict["min_runtime_s"],
-        )
-        end_time = time.perf_counter_ns()
+            if args_dict["warmup_iters"] > 0:
+                run_attention_iters(prepared, args_dict["warmup_iters"])
+                if profile_enabled:
+                    reset_attention_runtime_profile()
+
+            barrier.wait()
+            start_time = time.perf_counter_ns()
+            result = measure_attention_run(
+                prepared=prepared,
+                iters=args_dict["iters"],
+                min_runtime_s=args_dict["min_runtime_s"],
+            )
+            end_time = time.perf_counter_ns()
+            profile = collect_attention_profile(args_dict["attn_locality_mode"])
 
         result_queue.put(
             {
@@ -363,6 +603,7 @@ def _rank_worker(
                 "locality_groups": locality_groups,
                 "head_plan": asdict(shard_plan),
                 "elapsed_ms": (end_time - start_time) / 1e6,
+                "profile": profile,
                 "result": result,
             }
         )
@@ -456,6 +697,9 @@ def run_multiprocess_benchmark(args) -> dict[str, Any]:
         raise RuntimeError(f"Rank worker failed: {errors}")
 
     slowest_rank_mean_ms = max(item["result"]["time_mean_ms"] for item in rank_results)
+    profile_summary = aggregate_attention_profiles(
+        [item.get("profile") for item in rank_results]
+    )
     return {
         "workload": args.workload,
         "batch_size": args.batch_size,
@@ -474,6 +718,7 @@ def run_multiprocess_benchmark(args) -> dict[str, Any]:
         "attn_locality_group_span": args.attn_locality_group_span,
         "allowed_numa_nodes": allowed_numa_nodes,
         "rank_results": rank_results,
+        "profile_summary": profile_summary,
         "slowest_rank_mean_ms": slowest_rank_mean_ms,
     }
 

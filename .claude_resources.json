@@ -1,0 +1,63 @@
+{
+  "timestamp": "2026-04-22T13:41:35.534978",
+  "os": {
+    "system": "Linux",
+    "release": "6.6.71-3.0.11.kos5.x86_64",
+    "version": "#1 SMP PREEMPT_DYNAMIC Thu Dec 25 16:27:18 CST 2025",
+    "machine": "x86_64",
+    "python_version": "3.12.12"
+  },
+  "cpu": {
+    "physical_cores": 256,
+    "logical_cores": 512,
+    "max_frequency_mhz": 2400.0,
+    "architecture": "x86_64",
+    "processor": "x86_64",
+    "current_frequency_mhz": 2399.125923828125
+  },
+  "memory": {
+    "total_gb": 502.68,
+    "available_gb": 483.62,
+    "used_gb": 19.05,
+    "percent_used": 3.8,
+    "swap_total_gb": 32.0,
+    "swap_available_gb": 32.0
+  },
+  "disk": {
+    "path": "/home/zjj/vllm",
+    "total_gb": 3471.7,
+    "available_gb": 3358.94,
+    "used_gb": 112.76,
+    "percent_used": 3.2
+  },
+  "gpu": {
+    "nvidia_gpus": [],
+    "amd_gpus": [],
+    "apple_silicon": null,
+    "total_gpus": 0,
+    "available_backends": []
+  },
+  "recommendations": {
+    "parallel_processing": {
+      "strategy": "high_parallelism",
+      "suggested_workers": 510,
+      "libraries": [
+        "joblib",
+        "multiprocessing",
+        "dask"
+      ]
+    },
+    "memory_strategy": {
+      "strategy": "memory_abundant",
+      "note": "Can load most datasets into memory"
+    },
+    "gpu_acceleration": {
+      "available": false,
+      "note": "No GPU detected, use CPU-based libraries"
+    },
+    "large_data_handling": {
+      "strategy": "disk_abundant",
+      "note": "Sufficient space for large intermediate files"
+    }
+  }
+}

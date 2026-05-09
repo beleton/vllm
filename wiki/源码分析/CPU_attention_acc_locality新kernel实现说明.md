@@ -12,6 +12,8 @@
 
 当前 runtime 的任务领取方式是 `local-dynamic`：每个 `kv_head` 有独立的 attention 原子计数器和 reduction 原子计数器。覆盖到同一个 `kv_head` 的多个 `subgroup` 共享这两个计数器，动态领取 legacy logical slot 和 reduction item。`group_span>1` 不会让多个 `subgroup` 重复执行同一批 legacy slot。
 
+当前实现里，这两组计数器已经内嵌在 `cpu_attention_acc_locality::AttentionMetadata` 中，不再在 `operator()` 内临时创建 `std::vector<std::atomic<int32_t>>`。
+
 `attention_task_num` 和 `reduction_task_num` 当前按 legacy 总任务数统计：
 
 - `attention_task_num = actual_kv_head_num * legacy_effective_thread_num`
@@ -39,6 +41,62 @@
 - `acc-local-l3` 使用 `ops.cpu_attn_get_scheduler_metadata_acc_locality` 和 `ops.cpu_attention_with_kv_cache_acc_locality`
 
 `CPUAttentionMetadataBuilder.build()` 只在 `locality_mode == "acc-local-l3"` 时把 `group_span` 传给 scheduler op。`CPUAttentionBackendImpl.forward()` 根据 `attn_metadata.locality_mode` 再次选择执行 op。
+
+## metadata 初始化阶段
+
+`scheduler_metadata` 的构造发生在 attention metadata builder 阶段，不在 C++ attention kernel 的 `operator()` 内。
+
+Python 侧路径是：
+
+1. runner 先准备当前一次 forward/prefill 对应的 `CommonAttentionMetadata`
+2. `CPUAttentionMetadataBuilder.build()` 用这份公共元数据调用 `scheduler_op(...)`
+3. `acc-local-l3` 路径进入 `get_scheduler_metadata_acc_locality(...)`
+4. C++ 侧在 `build_scheduler_metadata(...)` 里创建外层 `AttentionMetadata`
+
+也就是说，`scheduler_metadata` 的完整构造发生在一次 forward 的 attention metadata 准备阶段；真正执行某一层 attention 时，只会读取这份已构造好的 metadata。
+
+当前实现里，`AttentionMetadata` 本体通过 placement new 构造一次，内部的 per-`kv_head` counter 数组也在这个阶段随 metadata 一起创建。
+
+但这不等于“所有状态都只初始化一次”。每次真正进入 `cpu_attention_acc_locality::AttentionMainLoop::operator()` 时，代码仍会先执行：
+
+```cpp
+metadata.reset_task_counters();
+```
+
+因此要区分两类动作：
+
+- metadata 对象构造：发生在 builder/scheduler 阶段
+- task counter 清零：发生在每次某一层真正执行 attention 之前
+
+## metadata 共享范围
+
+一次 prefill/forward 里，`scheduler_metadata` 不是“所有 attention 层全局只构造一份”，而是按 `attention group` 构造并共享。
+
+runner 在构造 attention metadata 时，会先对每个 `attention group` 调一次 `builder.build(...)`，得到单个 `attn_metadata_i`，然后把这同一个对象写给该组内所有 `layer_name`。
+
+因此共享范围是：
+
+- 同一个 `attention group` 内的层：共享同一份 `CPUAttentionMetadata` 和其中的 `scheduler_metadata`
+- 不同 `attention group`：各自构造各自的 metadata
+
+即使多个层共享同一份 `scheduler_metadata`，每层真正调用 kernel 时仍会重新执行 `metadata.reset_task_counters()`，不会沿用上一层的计数器状态。
+
+## attention group 的粒度
+
+`KV cache group` 的粒度是“共享同一份 `KVCacheSpec` 的层集合”。`attention group` 只在单个 `KV cache group` 内继续划分，分组键是 `(attn_backend, kv_cache_spec)`，代码里对应 `AttentionGroupKey(attn_backend, kv_cache_spec)`。
+
+同一 `attention group` 内的层共享同一份 attention metadata；不同 `attention group` 分别构造各自的 metadata。
+
+## Qwen3-30B-A3B 的分组结果
+
+`/models/Qwen3-30B-A3B/config.json` 中 `num_hidden_layers=48`、`num_attention_heads=32`、`num_key_value_heads=4`、`head_dim=128`、`sliding_window=null`、`use_sliding_window=false`。`Qwen3MoeModel` 的全部 decoder 层都用同一种 `Qwen3MoeAttention` 构造 `Attention`，每层 `Attention.get_kv_cache_spec()` 都返回 `FullAttentionSpec`。
+
+因此，当前实现下 `Qwen3-30B-A3B` 在单个 worker 视角上只有：
+
+- `1` 个 `KV cache group`
+- `1` 个 `attention group`
+
+不做 pipeline parallel 时，这个 `attention group` 覆盖全部 `48` 个 decoder self-attention 层；做 pipeline parallel 时，每个 stage 只覆盖本 stage 持有的层，但 group 数仍是 `1`。
 
 ## C++ 入口
 
@@ -83,6 +141,8 @@
 - `thread_to_group_id[]`：OpenMP thread 到 subgroup 的映射。
 - `thread_to_local_offset[]`：线程在 subgroup 内的局部序号。
 - `kv_head_to_subgroup[]`：每个 `kv_head` 的起始 subgroup。
+- `attention_task_counters[]`：按 `kv_head` 存放的 attention 任务计数器，元素按 64B 对齐。
+- `reduction_task_counters[]`：按 `kv_head` 存放的 reduction 任务计数器，元素按 64B 对齐。
 - `legacy_metadata_offset` / `legacy_metadata_size`：嵌入 legacy metadata blob 的位置和大小。
 
 `actual_kv_head_num` 复用 legacy/GQA 判定：
@@ -186,14 +246,19 @@ reduction 阶段仍调用基类：
 
 ### 新增的 local-dynamic 调度
 
-进入 `operator()` 后，acc-locality runtime 会创建两组本地计数器：
+进入 `operator()` 后，acc-locality runtime 会先对 metadata 内嵌的两组计数器做 reset：
 
 ```cpp
-std::vector<std::atomic<int32_t>> attention_task_counters(actual_kv_head_num);
-std::vector<std::atomic<int32_t>> reduction_task_counters(actual_kv_head_num);
+metadata.reset_task_counters();
 ```
 
-这两组计数器每个 `kv_head` 各一个，初始值为 `0`。
+active counter 数量由 metadata 决定：
+
+- `attention_counter_num = actual_kv_head_num`
+- `reduction_counter_num = actual_kv_head_num`，仅当 `reduction_item_num > 0`
+- `reduction_counter_num = 0`，当 `reduction_item_num == 0`
+
+因此，当前固定开销不再包含每次调用的 `std::vector` 分配；每次调用只会重置前 `actual_kv_head_num` 个 active counter。
 
 每个 OpenMP 线程读取自己的 subgroup：
 
@@ -211,7 +276,7 @@ for each kv_head_idx:
   if (!kv_head_covers_subgroup(metadata, kv_head_idx, subgroup_id)):
     continue
   for (;;) {
-    legacy_thread_offset = attention_task_counters[kv_head_idx].fetch_add(1);
+    legacy_thread_offset = metadata.attention_task_counters[kv_head_idx].fetch_add();
     if (legacy_thread_offset >= effective_thread_num):
       break
     run_attention_for_legacy_thread(kv_head_idx, legacy_thread_offset);
@@ -225,12 +290,14 @@ for each kv_head_idx:
   if (!kv_head_covers_subgroup(metadata, kv_head_idx, subgroup_id)):
     continue
   for (;;) {
-    item_offset = reduction_task_counters[kv_head_idx].fetch_add(1);
+    item_offset = metadata.reduction_task_counters[kv_head_idx].fetch_add();
     if (item_offset >= reduction_item_num):
       break
     run_reduction_for_item(kv_head_idx, item_offset);
   }
 ```
+
+当 `reduction_item_num == 0` 时，当前实现会直接跳过整段 reduction 领取循环，也会跳过无用的 reduction counter reset。
 
 因此，当前实现不是按 `local_offset` 做静态条带式分片。`thread_to_local_offset[]` 仍保存在 metadata 中，但当前 runtime 的 attention / reduction 任务领取由每个 `kv_head` 的原子计数器决定。
 
@@ -298,6 +365,44 @@ task_idx = metadata.acquire_counter();
 - `AttentionImpl<ISA, scalar_t, head_dim>` 数学实现。
 - tile 计算、softmax、partial output、split-KV reduction 的核心代码。
 
+## 当前性能核对
+
+`test_results/P3_AttnOnly/Qwen3-30B-A3B/qhead_32_kvhead_16/NPS1_TP2/prefill-like/global-fixed/batch_1/summary.csv` 中，`acc-local-l3` 在 `q2048` 和 `q4096` 上慢于 `balanced`：
+
+- `q2048`：`1.864542 ms` 对 `1.432343 ms`
+- `q4096`：`7.844426 ms` 对 `6.738855 ms`
+
+同一份 summary 中，`acc-local-l3` 的 `L3 Access pti` 与 `L3 Miss pti` 没有更高，`IPC` 反而更低：
+
+- `q2048`：`IPC 2.16 -> 1.81`
+- `q4096`：`IPC 1.94 -> 1.77`
+
+因此，当前数据不支持把这段差距归因到“`acc-local-l3` 的 L3 locality 更差”；差距更接近调度带来的并行利用率差异。
+
+对当前工作树与 `/tmp/vllm_old` 的 fresh benchmark 对照，没有观察到“最近把 counter 内嵌到 metadata 并在 `operator()` 开头 reset”导致稳定回退：
+
+- `q64`：当前 `0.02857 ms`，旧版 `0.02848 ms`
+- `q128`：当前 `0.02875 ms`，旧版 `0.02885 ms`
+- `q2048`：当前 `1.86620 ms`，旧版 `1.87316 ms`
+- `q4096`：`warmup=10, iters=100` 的三次交替复现中，当前分别为 `7.79460 / 7.79238 / 7.81783 ms`，旧版分别为 `7.81417 / 7.80629 / 7.82548 ms`
+
+`q4096` 的 `VLLM_CPU_ATTN_DEBUG=1` 单次复现里，当前版与旧版 runtime summary 一致：
+
+- `thread_num=127`
+- `subgroup_num=8`
+- `group_span=1`
+- `legacy_effective_thread_num=16`
+- `actual_kv_head_num=8`
+- `reduction_item_num=0`
+- 每个 `kv_head` 仍只覆盖一个 subgroup
+
+因此，当前能确认的差异仍是调度策略本身：
+
+- `balanced`：所有线程从单个全局 counter 领取 `kv_head × legacy_thread_offset` 任务
+- `acc-local-l3`：先按 `kv_head -> subgroup` 限制可领取线程，再在该局部线程池内用 per-`kv_head` counter 动态领取任务
+
+现有证据支持的结论是：当前 `acc-local-l3` 相对 `balanced` 的长序列慢点主要体现在调度层，而不是最近这次 counter 存放位置调整。
+
 ## group_span 当前语义
 
 `group_span` 只改变某个 `kv_head` 覆盖的 subgroup 数量。
@@ -322,17 +427,18 @@ metadata 可通过 `torch.ops._C_utils.inspect_cpu_attn_acc_locality_metadata(..
 - `attention_task_num`
 - `legacy_attention_task_num`
 - `reduction_task_num`
+- `attention_counter_num`
+- `reduction_counter_num`
 - `subgroup_thread_num`
 - `kv_head_to_subgroup`
 
 runtime summary 由 `cpu_attention::should_log_runtime_summary()` 控制：
 
-- 如果设置了 `VLLM_CPU_ATTN_DEBUG`，按它判断是否打印。
-- 如果未设置 `VLLM_CPU_ATTN_DEBUG`，再读取 `VLLM_CPU_ATTN_ACC_LOCALITY_DEBUG`。
+- `VLLM_CPU_ATTN_DEBUG=1` 时打印。
 
 summary 中会打印 `scheduler_mode=local-dynamic`、每个 `kv_head` 覆盖的 subgroup、每个 subgroup 的线程列表和可见 `kv_head`。
 
-runtime trace 由 `VLLM_CPU_ATTN_TRACE` 控制，可用 `VLLM_CPU_ATTN_TRACE_RANK` 给输出加 rank 前缀。`acc-local-l3` trace 行包含：
+runtime trace 也由 `VLLM_CPU_ATTN_DEBUG=1` 控制；若设置 `VLLM_CPU_ATTN_DEBUG_RANK`，trace 行会带对应 rank 前缀。`acc-local-l3` trace 行包含：
 
 - `mode=acc-local-l3`
 - `thread_id`
@@ -358,6 +464,8 @@ runtime trace 由 `VLLM_CPU_ATTN_TRACE` 控制，可用 `VLLM_CPU_ATTN_TRACE_RAN
 - 基于 `ThreadLocalityManager` 的 subgroup 映射，异常时回退为单 subgroup。
 - `kv_head -> start_subgroup` 和 `group_span` 覆盖范围。
 - 每个 `kv_head` 的 local-dynamic attention / reduction 计数器。
+- per-`kv_head` 计数器直接内嵌在 acc metadata 中，每次调用开始 reset。
+- `reduction_item_num == 0` 时跳过 reduction counter reset 和 reduction 调度循环。
 - 多 subgroup 覆盖同一 `kv_head` 时的唯一任务领取。
 - metadata inspect、runtime summary、runtime trace。
 

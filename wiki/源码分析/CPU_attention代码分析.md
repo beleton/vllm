@@ -2,7 +2,7 @@
 
 ## 说明
 - 这页作为 CPU attention 源码分析的持续入口。
-- 当前先记录 dispatch 宏、模板实例化和调试切入点，后续可继续补 attention 调度、tile、workitem、KV cache 访问等分析内容。
+- 当前记录 dispatch 宏、模板实例化、调试切入点，以及 `cpu_attn_impl.hpp` 中基于 L2 cache 的 tile 与 scratchpad 规划。
 
 ## 问题
 - `VLLM_DISPATCH_FLOATING_TYPES`、`CPU_ATTN_DISPATCH_CASE_HEADDIM`、`CPU_ATTN_DISPATCH_IMPL` 在 CPU attention 路径里分别做什么。
@@ -160,6 +160,42 @@ max_num_q_per_iter = attn_impl::MaxQHeadNumPerIteration;
   - 其他情况按平台和 `block_size` 选 `vec` / `neon` / `vec16`
 - `get_scheduler_metadata_acc_locality()` 里会把字符串 `isa_hint` 解析成 `cpu_attention::ISA`。
 - `cpu_attention_with_kv_cache_acc_locality()` 再从 `scheduler_metadata` 里的 legacy metadata 读出这个 `isa`，做最终分发。
+
+## `cpu_attn_impl.hpp` 中的 L2 cache 优化
+
+### 入口
+- 这里描述的是 `csrc/cpu/cpu_attn_impl.hpp` 里的 balanced main loop。
+- 该文件没有显式 `prefetch` 指令或 cache hint；L2 cache 的使用方式是用 L2 容量约束 `tile`（分块）大小和 `scratchpad`（临时缓冲区）布局。
+- L2 可用容量来自 `cpu_utils::get_available_l2_size()`，该函数读取 `at::cpu::L2_cache_size()` 后右移一位，实际只使用 50% L2 容量作为预算。
+
+### Scheduler 阶段
+- `AttentionScheduler::schedule()` 会读取 L2 预算，并调用 `calcu_default_tile_size(...)` 计算默认 tile 大小。
+- `calcu_default_tile_size(...)` 的 cache 模型包含：
+  - `Q`: `q_tile_size * head_dim * q_buffer_elem_size`
+  - `K/V`: `2 * k_tile_size * head_dim * elem_size`
+  - `Q@K^T logits`: `max_num_q_per_iter * k_tile_size * logits_buffer_elem_size`
+  - 中间输出: `q_tile_size * head_dim * output_buffer_elem_size`
+- 默认情况下代码令 `q_tile_size == k_tile_size == tile_size`，并把结果按 `round_size` 向下取整，同时限制 `tile_size <= 128 * max_num_q_per_iter`。
+- `default_tile_token_num = default_tile_size / q_head_per_kv` 后，scheduler 用它控制每个 workitem 接收的 Q token 数量；当需要开启新的 Q tile 迭代、当前 workitem 的 `q_token_num` 已达到该粒度且当前线程已有工作时，后续 workitem 会切到下一个线程。
+- `kv_len_per_thread` 先按所有请求的对齐后 KV 长度除以线程数，再乘以 `(use_gqa ? input.num_heads_kv : input.num_heads_q)` 得到；scheduler 按该值把 workitem 分给线程。开启 KV split 时，只对尾部且 `q_tile_token_num <= split_kv_q_token_num_threshold` 的小 Q tile 切 KV，并生成 reduction item。
+
+### Main Loop 阶段
+- `AttentionMainLoop::operator()` 在每个 OpenMP 线程内重新读取 L2 预算，并用同一套 `calcu_default_tile_size(...)` 计算 `default_q_tile_token_num`。
+- 每个 Q tile 开始时，代码计算：
+  - `actual_q_token_num`
+  - `q_head_tile_size = actual_q_token_num * actual_q_heads_per_kv`
+  - `rounded_q_head_tile_size`，按 `max_q_head_num_per_iter` 向上取整
+- 随后调用 `calcu_tile_size_with_constant_q(...)`，在当前 Q tile 大小固定的前提下回算 `kv_tile_size`。
+- 当 `rounded_q_head_tile_size <= max_q_head_num_per_iter` 时，`one_round=true`，公式不把 K/V 计入 cache 分母；否则公式把 K/V 与 logits 一起计入 cache 分母。
+- `buffer_manager.update(...)` 使用当前 `q_head_tile_size` 和 `kv_tile_size` 布局本线程 scratchpad，缓冲区包括 Q、logits、partial output、max、sum。
+- Q tile 先通过 `copy_q_heads_tile(...)` 拷到 `q_buffer`。后续计算循环按 `kv_tile_size` 遍历 KV 区间，再按 `max_q_token_num_per_iter` 遍历 Q 子块，调用 `execute_attention(...)` 复用同一组 Q、logits、partial output、max、sum 缓冲区。
+- 计算结束后，如果当前 workitem 未做 KV split，直接 `final_output(...)` 写回输出；如果做了 KV split，则先写入 reduction scratchpad，再由 reduction task 合并 split 结果。
+
+### Scratchpad 与 cache line 处理
+- `AttentionScratchPad` 按 `thread_id * attention_scratchpad_size_per_thread` 为每个 OpenMP 线程分配独立 attention scratchpad 区间。
+- Q、logits、partial output、max、sum，以及 reduction 的 flag、output、max、sum 缓冲区大小都通过 `round_to_64(...)` 对齐到 64 字节。
+- scheduler 会根据 L2 预算预先计算 `attention_scratchpad_size_per_thread` 和 `reduction_scratchpad_size_per_kv_head`，再通过 `ScratchPadManager::realloc(...)` 一次性申请总 scratchpad。
+- `reduce_splits(...)` 里 `local_max[16]` 和 `local_sum[16]` 使用 `alignas(64)`；源码注释说明 split 的 max/sum 元素没有 cache alignment，因此使用本地缓冲减少 false sharing（伪共享）。
 
 ## 相关源码
 - `vllm/v1/attention/backends/cpu_attn.py`

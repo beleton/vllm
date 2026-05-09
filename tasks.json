@@ -1,24 +1,12 @@
 {
     "project": "Chiplet CPU推理加速",
-    "updated_at": "2026-04-20 11:10:59 +0800",
+    "updated_at": "2026-05-07 15:10:00 +0800",
     "tasks": [
-        {
-            "id": "8",
-            "description": "对 `decode_B16_I1_O1024` 与 `prefill_B16_I1024_O1` 运行 `AMDuProfCLI hotspots + IBS L3-miss`，补齐函数级归因证据",
-            "status": "completed",
-            "passes": true
-        },
         {
             "id": "9",
             "description": "补跑 `prefill_B16_I256_O1`，并补齐 prefill 长度 sweep 以定位 L3 行为转折区间",
             "status": "pending",
             "passes": false
-        },
-        {
-            "id": "35",
-            "description": "实现 `attention-only` 多进程 TP benchmark 脚本，复用 `CPUWorker.init_device()` 的 NUMA/OMP 绑核逻辑，支持 `global-fixed/per-rank-fixed` 两套 head 切分口径，并保留 `decode-like/prefill-like` 统一输入路径",
-            "status": "completed",
-            "passes": true
         },
         {
             "id": "10",
@@ -27,386 +15,188 @@
             "passes": false
         },
         {
-            "id": "149",
-            "description": "按多-subgroup 联合线程池方案修正 `cpu_attn_acc_locality` 的 `group_span` 执行：同一 `kv_head` 覆盖多个 subgroup 时对 legacy slot / reduction item 做唯一分片而不是重复执行，并补对应单测与最小 benchmark 验证",
-            "status": "completed",
-            "passes": true
-        },
-        {
-            "id": "150",
-            "description": "汇总 `test_results/P3_AttnOnly/Qwen3-30B-A3B/NPS1_TP2/prefill-like/global-fixed/batch_16` 下 `balanced_span4` 与 `acc-local-l3_span4` 的 dry-run 和 PCM 结果，形成当前 `NPS1_TP2` 首轮对照结论",
-            "status": "completed",
-            "passes": true
-        },
-        {
-            "id": "209",
-            "description": "修订 `wiki/资料总览/Chiplet架构下L3指标关注重点与高L3Miss归因边界.md`，把 `Demand DC Fills` 等局部性指标纳入主判据，并按访问量/代价/外溢层级重写归因边界",
-            "status": "completed",
-            "passes": true
-        },
-        {
             "id": "228",
             "description": "在固定 `NPS1_TP2/global-fixed` 拓扑下补更密长度点，优先覆盖 `prefill q=512 -> 1024` 与 `decode kv=1024 -> 2048`，继续验证 locality mode 切换边界",
             "status": "pending",
             "passes": false
         },
         {
-            "id": "229",
-            "description": "修订 `wiki/术语与背景/AMDuProfPcm指标介绍.md`，将 `CPI (Sys/User)` 与 `IPC (Sys/User)` 统一收敛到 Batch 1，去掉后续 batch 的重复说明",
+            "id": "35",
+            "description": "已实现 `attention-only` 多进程 TP benchmark，复用 `CPUWorker.init_device()` 的 NUMA/OMP 绑核逻辑，支持 `global-fixed/per-rank-fixed` 与统一 `decode-like/prefill-like` 输入路径",
             "status": "completed",
             "passes": true
         },
         {
-            "id": "230",
-            "description": "修订 `wiki/术语与背景/L3捕获流程.md`，补充“不能直接得到纯本地L3 hit延迟、最近似口径仅为 same-CCX local-cache hit latency (IBS)”的边界说明",
-            "status": "completed",
-            "passes": true
-        },
-        {
-            "id": "231",
-            "description": "拆分 `wiki/术语与背景/AMDuProfPcm指标介绍.md` 与 `wiki/术语与背景/L3捕获流程.md`，将 `Batch 2 补充` 等 `L3` 捕获链路内容独立整理，并同步修正文档引用",
-            "status": "completed",
-            "passes": true
-        },
-        {
-            "id": "232",
-            "description": "合并 `wiki/实验方案/Qwen3-30B-A3B_IBS来源延迟采样实验步骤.md` 与 `wiki/术语与背景/L3捕获流程.md`，整理为 `wiki/术语与背景/访存延迟测量.md` 并同步修正文档入口",
-            "status": "completed",
-            "passes": true
-        },
-        {
-            "id": "233",
-            "description": "联网补充 `wiki/术语与背景/访存延迟测量.md` 的基础知识，新增 load 访问链路、排队/合并点，以及 `Intel MLC`、`lmbench lat_mem_rd`、`core-to-core latency` 的测量边界说明",
-            "status": "completed",
-            "passes": true
-        },
-        {
-            "id": "234",
-            "description": "细化 `wiki/术语与背景/访存延迟测量.md` 中 `Intel MLC` 口径，先定义 `pointer chasing`，再说明其在 `idle latency` 中用于压低测量线程自身并发与预取干扰的作用",
-            "status": "completed",
-            "passes": true
-        },
-        {
-            "id": "235",
-            "description": "收紧 `wiki/术语与背景/访存延迟测量.md` 的措辞，去掉“不是…而是…”式绕行表述，改为直接正述 `pointer chasing` 的目的",
-            "status": "completed",
-            "passes": true
-        },
-        {
-            "id": "236",
-            "description": "继续收紧 `wiki/术语与背景/访存延迟测量.md` 的语言风格：术语首次出现即解释，叙述部分尽量中文化，去掉未解释的中英混杂表达如 `dependent reads`、`latency thread`、`delay`、`workload-conditioned`",
-            "status": "completed",
-            "passes": true
-        },
-        {
-            "id": "237",
-            "description": "把用户刚确认的文档语言约束整理进 `AGENTS.md`：叙述默认中文、术语首次出现即解释、常见通用术语可保留英文、避免中英生硬混写与“不是……而是……”式绕行句",
-            "status": "completed",
-            "passes": true
-        },
-        {
-            "id": "238",
-            "description": "将 `AGENTS.md` 中新增的文档写作规范进一步收缩为更通用、更简洁的版本，去掉过于具体的例子式约束",
-            "status": "completed",
-            "passes": true
-        },
-        {
-            "id": "239",
-            "description": "将 `PCM/IBS` 测得的是当前 `workload` 和系统状态下、包含排队与仲裁在内的来源级观测延迟或延迟贡献这一句补入 `wiki/术语与背景/访存延迟测量.md` 的边界说明",
-            "status": "completed",
-            "passes": true
-        },
-        {
-            "id": "240",
-            "description": "将跨 `CCD` 的远端 `cache` 读与 `core-to-core latency` 的路径差异补入 `wiki/术语与背景/访存延迟测量.md`，并补充 Intel 官方 `MLC` 的常用延迟测量命令",
-            "status": "completed",
-            "passes": true
-        },
-        {
-            "id": "241",
-            "description": "根据当前机器的 `L1/L2/L3` 容量为 `wiki/术语与背景/访存延迟测量.md` 中的 `MLC --idle_latency` 显式指定工作集大小，并补明 `--c2c_latency` 的作用",
-            "status": "completed",
-            "passes": true
-        },
-        {
-            "id": "242",
-            "description": "把当前机器 `L1/L2/本地L3/本地内存` 与跨 `CCD` 远端 `cache` 路径的可采用延迟量级补入 `wiki/术语与背景/访存延迟测量.md`",
-            "status": "completed",
-            "passes": true
-        },
-        {
-            "id": "243",
-            "description": "精简 `wiki/术语与背景/访存延迟测量.md` 的表述，并把“跨 `CCD` 远端 `cache/L3` 路径延迟已接近本地内存量级”写回文档",
-            "status": "completed",
-            "passes": true
-        },
-        {
-            "id": "244",
-            "description": "将 `wiki/术语与背景/访存延迟测量.md` 中“不能写成/可以写成”式边界表述改为直接陈述句",
-            "status": "completed",
-            "passes": true
-        },
-        {
-            "id": "245",
-            "description": "将当前机器与 Rome 论文中“跨 `CCD` 远端 `cache/L3` 路径远高于本地 `L3`、接近甚至可能高于本地内存”的观察整理进 `wiki/资料总览/当前研究主线.md`",
-            "status": "completed",
-            "passes": true
-        },
-        {
-            "id": "246",
-            "description": "删除 `wiki/资料总览/info目录迁移与归档说明.md`，并清理 `wiki` 文档入口中的相关引用",
-            "status": "completed",
-            "passes": true
-        },
-        {
-            "id": "247",
-            "description": "删除冗长的 `wiki/实验结果解读/2026-04-13_Qwen3-30B-A3B_P3_AttnOnly_balanced指标深度分析.md`，改写 `summary.csv` 的精简分析文档并更新实验结果解读入口",
+            "id": "149",
+            "description": "已修正 `cpu_attn_acc_locality` 的 `group_span` 唯一分片执行，避免多 subgroup 重复执行同一 `kv_head` 的 legacy slot / reduction item",
             "status": "completed",
             "passes": true
         },
         {
             "id": "248",
-            "description": "修改 `tools/p3_attn_only/pcm_compare.py`，将 `IPC/CPI (Sys + User/Sys/User)` 纳入 `summary.csv`、`compare_summary.csv`、`detail_summary.csv` 与 `summary.md`，并补对应回归测试",
-            "status": "completed",
-            "passes": true
-        },
-        {
-            "id": "249",
-            "description": "把新增 `IPC` 口径下对 `P3_AttnOnly/NPS1_TP2/prefill-like/global-fixed/batch_16/summary.csv` 的反直觉延迟解释整理进实验结果解读文档",
-            "status": "completed",
-            "passes": true
-        },
-        {
-            "id": "250",
-            "description": "进一步收紧 `wiki/实验结果解读/2026-04-15_Qwen3-30B-A3B_P3_AttnOnly_NPS1_TP2_prefill_batch16_summary分析.md` 的措辞，去掉“当前数据支持的最稳解释是”这类冗余引导语",
-            "status": "completed",
-            "passes": true
-        },
-        {
-            "id": "251",
-            "description": "继续精简 `wiki/实验结果解读/2026-04-15_Qwen3-30B-A3B_P3_AttnOnly_NPS1_TP2_prefill_batch16_summary分析.md` 中 `核心结论` 段，压缩重复表述",
-            "status": "completed",
-            "passes": true
-        },
-        {
-            "id": "252",
-            "description": "确认 `wiki/术语与背景/访存延迟测量.md` 中自定义 `PCM` 口径足以补测来源级平均 `L3 miss` 延迟，并在 `wiki/实验方案/Qwen3-30B-A3B_attention-only_TP实验步骤.md` 补充 `NPS1_TP2/global-fixed` 可直接运行命令",
-            "status": "completed",
-            "passes": true
-        },
-        {
-            "id": "253",
-            "description": "将 `NPS1_TP2/global-fixed` 自定义 `PCM` 命令进一步补成同时输出 `IPC/CPI` 的版本，避免 `Collect \"ipc\" along with \"l3\"` 提示",
-            "status": "completed",
-            "passes": true
-        },
-        {
-            "id": "254",
-            "description": "将自定义 `PCM XML` 改为直接写到 `test_results/amduprof_pcm_l3_source_latency.conf`，并删除实验步骤文档中的 `prepare_pcm_l3_source_latency_xml()` 包装函数",
+            "description": "`tools/p3_attn_only/pcm_compare.py` 已纳入 `IPC/CPI (Sys + User/Sys/User)` 汇总输出，并补回归测试",
             "status": "completed",
             "passes": true
         },
         {
             "id": "255",
-            "description": "参考 `tools/p3_attn_only/pcm_compare.py` 新增 `pcm_l3_source_latency_compare.py`，汇总 `batch_16` 下各个 `pcm_l3_source_latency_raw` 的 `report-cumulative.csv` 并生成 CSV 表格",
-            "status": "completed",
-            "passes": true
-        },
-        {
-            "id": "256",
-            "description": "结合新增 `summary_l3_source_latency.csv` 重审并更新 `wiki/实验结果解读/2026-04-15_Qwen3-30B-A3B_P3_AttnOnly_NPS1_TP2_prefill_batch16_summary分析.md`，补齐来源级 `L3 miss` 延迟拆解并修正结论",
-            "status": "completed",
-            "passes": true
-        },
-        {
-            "id": "257",
-            "description": "调整 `tools/p3_attn_only/pcm_l3_source_latency_compare.py` 的转置汇总输出，删除 `summary_l3_source_latency.csv` 中的 `case_dir` 行并补回归测试",
-            "status": "completed",
-            "passes": true
-        },
-        {
-            "id": "258",
-            "description": "将“避免使用 `更准确的写法是`、`对旧文档结论的修正` 等元话语式引导，更新旧结论时直接改写正文”补入 `AGENTS.md`",
-            "status": "completed",
-            "passes": true
-        },
-        {
-            "id": "259",
-            "description": "在 `test_results/amduprof_pcm_l3_source_latency.conf` 中补入 `L3 Access/L3 Miss` 及其 `pti/ratio` 指标",
+            "description": "已新增 `tools/p3_attn_only/pcm_l3_source_latency_compare.py`，用于汇总 `pcm_l3_source_latency_raw` 的 `report-cumulative.csv` 并生成对照 CSV",
             "status": "completed",
             "passes": true
         },
         {
             "id": "260",
-            "description": "修复 `test_results/amduprof_pcm_l3_source_latency.conf` 中 `L3 Access/Miss (pti)` 的失真：改用官方 `$RetdInstL3` 口径并补入原始退休指令事件 `$RetdInst2`，增加配置回归测试",
+            "description": "已修复 `test_results/amduprof_pcm_l3_source_latency.conf` 中 `L3 Access/Miss (pti)` 的失真，改用官方 `$RetdInstL3` 口径并补回归测试",
             "status": "completed",
             "passes": true
         },
         {
-            "id": "261",
-            "description": "继续更新 `wiki/实验结果解读/2026-04-15_Qwen3-30B-A3B_P3_AttnOnly_NPS1_TP2_prefill_batch16_summary分析.md`，补入“短 `q` 的 `Local L2` fill 变化来自调度映射而非显式 `L2` 优化”与“长 `q` 的 slowdown 已定位到执行效率层且源码上可见 `balanced/acc-local-l3` 的动态调度差异”",
+            "id": "340",
+            "description": "已改造 CPU attention profiling 口径：程序内累计 scheduler/runtime profile，benchmark 仅统计正式迭代，并在 JSON 输出 rank 级与汇总 profile",
             "status": "completed",
             "passes": true
         },
         {
-            "id": "262",
-            "description": "更新 `wiki/源码分析/CPU_attention并行计算过程_线程任务workitem与tile.md`，补入 `workitem_group.q_token_num` 不均衡与 `total_kv_len/workitem` 划分逻辑",
+            "id": "341",
+            "description": "`tools/p3_attn_only/pcm_compare.py` 已汇总 `profile.json` 中 scheduler/runtime/slowest-rank 并行度指标，并写入 `summary.csv` 等汇总文件",
             "status": "completed",
             "passes": true
         },
         {
-            "id": "263",
-            "description": "分析 `P3_AttnOnly/NPS1_TP2/global-fixed` 下 `kv_head16` 的 `acc-local-l3` 相对 `balanced` 在长 `q` 退化的原因，结合 `summary.csv`、单次日志与源码给出基于事实的归因",
+            "id": "345",
+            "description": "`L3 source latency` raw 口径已改为来源 request share，并调整 `Local Memory` 与 `another CCX in same node` 的指标顺序",
             "status": "completed",
             "passes": true
         },
         {
-            "id": "264",
-            "description": "继续更新 `wiki/源码分析/CPU_attention并行计算过程_线程任务workitem与tile.md`，补入 `workitem_group` 按可见 `KV` 区间对齐长度累计、runtime 真实读取范围与 `mask` 边界",
+            "id": "347",
+            "description": "已新增 `wiki/实验方案/Qwen3-30B-A3B_attention-only_L3驻留验证实验步骤.md`，整理 `PCM/resctrl/CAT/IBS` 命令验证 `balanced/acc-local-l3` 的本地 `L3` 驻留与 `K/V` 复用",
             "status": "completed",
             "passes": true
         },
         {
-            "id": "265",
-            "description": "修订 `wiki/源码分析/CPU_attention并行计算过程_线程任务workitem与tile.md` 中 `12.2 scheduler 先生成多少 workitems` 的例子，明确各个 workitem 的 q 范围不等长，切分依据是累计 `total_kv_len` 而不是平均分配 q token",
+            "id": "348",
+            "description": "已新增 `tools/p3_attn_only/pcm_l3_task_metrics.py` 计算 `L3 Miss / attention task`，L3 驻留方案以自定义 `pcm_l3_source_latency` 为主口径",
             "status": "completed",
             "passes": true
         },
         {
-            "id": "266",
-            "description": "继续更新 `wiki/源码分析/CPU_attention并行计算过程_线程任务workitem与tile.md`，补入 request 与逻辑线程桶不是一一对应、日志中的 `thread N` 实际对应逻辑桶编号的说明",
+            "id": "350",
+            "description": "两份 attention-only 实验步骤已加入 `cleanup_vllm_all`，在启动 `benchmark_cpu_attn_mp.py` 前先清空残留 `vllm/multiprocessing` 进程",
             "status": "completed",
             "passes": true
         },
         {
-            "id": "267",
-            "description": "更新 `wiki/实验结果解读/2026-04-15_Qwen3-30B-A3B_P3_AttnOnly_NPS1_TP2_prefill_batch16_summary分析.md`，补入小 `batch` 下 `balanced` 理论上更易恶化 locality、因此更可能为 `acc-local-l3` 提供收益空间的机制边界，并基于现有证据判断是否应继续修改 `acc` 调度代码",
+            "id": "351",
+            "description": "`tools/p3_attn_only/pcm_l3_task_metrics.py` 已兼容纯 PCM 结果目录，不再依赖 `profile.json` 发现 case；缺失 profile 时保留可计算字段并标注 per-task 指标不可用",
             "status": "completed",
             "passes": true
         },
         {
-            "id": "268",
-            "description": "继续更新 `wiki/实验结果解读/2026-04-15_Qwen3-30B-A3B_P3_AttnOnly_NPS1_TP2_prefill_batch16_summary分析.md`，补入“`balanced` 抢的是任务而非数据、`acc-local-l3` 固定的是任务资格，因此 locality 优势仍可能被动态均衡收益反超”的调度层归因",
+            "id": "352",
+            "description": "复核 `benchmark_cpu_attn_mp.py` 相对 `benchmark_cpu_attn.py` 的实现差异，确认会影响 CPU attention 性能测试解释的代码路径与实验噪声来源",
             "status": "completed",
             "passes": true
         },
         {
-            "id": "269",
-            "description": "分析 `acc-local-l3` 在什么测试配置下可以让每个 CCD 的线程数与 legacy slot 切分同时更对称，并给出验证 locality 净收益的最小实验配置",
+            "id": "353",
+            "description": "已完善 `wiki/资料总览/汇报.md`，整理 attention ACC 实现思路、实测性能和理论差距",
             "status": "completed",
             "passes": true
         },
         {
-            "id": "270",
-            "description": "修改 `cpu_attn_acc_locality` 调度层：在保持 `kv_head` locality 的前提下，把 covered subgroup 内的 `legacy slot / reduction item` 从静态条带分派改为局部动态领取，并补对应单测与最小 benchmark 验证",
+            "id": "354",
+            "description": "已在 `wiki/资料总览/汇报.md` 补充下一步计划：按 L3 驻留验证实验确认 `K/V` 是否留在本地 `L3`",
             "status": "completed",
             "passes": true
         },
         {
-            "id": "271",
-            "description": "修正 `tools/p3_attn_only/pcm_compare.py` 对列头与 markdown 中 `span4` 的硬编码，使输出按实际 `mode_dir/group_span` 标注，并补 `group_span=1` 回归测试",
+            "id": "355",
+            "description": "已将 `benchmark_cpu_attn_mp.py` 改为仅共享 `block_table_seed`，保证同一 case 内各 TP rank 的随机 `block_table` 逻辑一致，同时保留 `query/key/value` 数据 seed 随 rank 变化；`block_table` 行内随机改为非放回并排除保留的 `block_id=0`，补齐 worker benchmark 路径的 `torch.inference_mode()`",
             "status": "completed",
             "passes": true
         },
         {
-            "id": "272",
-            "description": "补充 `wiki/源码分析/CPU_attention并行计算过程_线程任务workitem与tile.md`：说明 `balanced` 下单个 `thread_offset` 桶可同时挂多个请求的 `workitem_group`，以及单个 `(kv_head_idx, thread_offset)` task 会顺序处理这些请求但 `kv_head` 保持固定",
+            "id": "356",
+            "description": "已分析 P4_AttnOnly_L3Residency 实验一 prefill-like 数据，补充 `pcm_l3_task_metrics.py` 汇总标准 PCM 的 IPC/L2/L3/DC 指标，并撰写实验分析文档，结论为跨CCD访问不是当前 CPU attention 主瓶颈",
             "status": "completed",
             "passes": true
         },
         {
-            "id": "273",
-            "description": "为 CPU attention 的 `balanced/acc-local-l3` 执行路径增加可选 `TRACE` 日志，逐 `workitem_group` 打印真实线程、请求、`kv_head`、逻辑桶与切分范围，并补最小单测验证",
+            "id": "357",
+            "description": "已整理 CPU attention L3局部性阶段报告，并更新 L3驻留验证实验步骤：将 `resctrl llc_occupancy` 降为可选实验，确认后续最小补证据集合为 `CAT(q8192/q16384)` 与 `IBS(q8192)`",
             "status": "completed",
             "passes": true
         },
         {
-            "id": "274",
-            "description": "结合当前 `vLLM` legacy CPU attention 源码核对 `wiki/源码分析/CPU_attention并行计算过程_线程任务workitem与tile.md`，确认文中关于 `thread/task/workitem/tile` 的描述是否与实现一致，并记录错误项",
+            "id": "358",
+            "description": "已重写 `Qwen3-30B-A3B_attention-only_L3驻留验证实验步骤.md`，压缩表述并新增 `group_span=8` 诊断定位",
             "status": "completed",
             "passes": true
         },
         {
-            "id": "275",
-            "description": "为 attention trace 增加 `rank` 标识，并在多进程 benchmark 中默认仅保留 `rank0` 的 trace；补对应单测验证环境变量注入与日志前缀",
+            "id": "359",
+            "description": "已将 P4_AttnOnly_L3Residency 结果目录统一为 `batch_x/spanY/q*_kv*/mode`，补齐 `pcm_l3_task_metrics.py` 对 `span` 布局的兼容，并更新实验文档到 `span` 命名",
             "status": "completed",
             "passes": true
         },
         {
-            "id": "276",
-            "description": "按当前 legacy CPU attention 源码修订 `wiki/源码分析/CPU_attention并行计算过程_线程任务workitem与tile.md`：删除失效日志引用，精确化 `10.2` 的 workitem 写回条件，并更新关键源码行号",
+            "id": "360",
+            "description": "已新增 `tools/p3_attn_only/cat_compare.py`，汇总 `spanY` baseline 与 `spanY/cat/*/{mask}` 的 `dry_run_summary.json`，输出 `cat_compare_summary.csv` 供 `0001/ffff` 同口径对比",
             "status": "completed",
             "passes": true
         },
         {
-            "id": "277",
-            "description": "新增 `wiki/源码分析/CPU_attention_balanced线程级任务划分简述.md`，只保留线程粒度，说明 legacy `balanced` attention 的 scheduler 分桶、`kv_head × 逻辑线程桶` 任务展开与统一线程池动态抢任务，并补 wiki 入口",
+            "id": "361",
+            "description": "已新增 `wiki/实验结果解读/2026-05-06_Qwen3-30B-A3B_CPU_Attention_ACC局部性优化结论.md`，基于 `P3/P4` 与 CAT 结果说明 `acc-local-l3` 不适合作为当前 attention 优化主线",
             "status": "completed",
             "passes": true
         },
         {
-            "id": "278",
-            "description": "新增 attention trace 日志到单文件 HTML 的可视化脚本，按线程分组展示任务列表并支持按 `rank/mode/thread/kv_head/req` 过滤；补最小解析与 HTML 生成单测",
+            "id": "362",
+            "description": "已在 `wiki/实验方案/Qwen3-30B-A3B_attention-only_L3驻留验证实验步骤.md` 补充 `resctrl llc_occupancy` 单点旁证实验命令",
             "status": "completed",
             "passes": true
         },
         {
-            "id": "279",
-            "description": "扩写 `wiki/源码分析/CPU_attention_balanced线程级任务划分简述.md`，补入当前 `acc-local-l3` 的线程分组、`kv_head` 覆盖范围与局部动态领取机制，并同步更新 wiki 入口标题",
+            "id": "363",
+            "description": "已将 `resctrl llc_occupancy` 实验命令改为固定 `--iters 150` 口径，并补回 `occupancy_summary.json` 输出",
             "status": "completed",
             "passes": true
         },
         {
-            "id": "280",
-            "description": "为 attention trace HTML 视图增加 `CCD` 维度：从 benchmark log 的 `locality_groups.l3_cache_id` 恢复 `core -> CCD`，并在 `req × kv_head` 汇总与线程明细中展示涉及的 CCD 集合",
+            "id": "364",
+            "description": "已扩展 `resctrl llc_occupancy` 实验命令支持 `mask` 参数，`0001` 输出写入独立目录以避免覆盖已有 `ffff` 结果",
             "status": "completed",
             "passes": true
         },
         {
-            "id": "281",
-            "description": "根据 `test_results/P3_AttnOnly/Qwen3-30B-A3B/qhead_32_kvhead_16/NPS1_TP2/prefill-like/global-fixed/batch_1/summary.csv` 绘制 `balanced` 与 `acc-local-l3` 的 `slowest rank mean (ms)` 对比图",
+            "id": "365",
+            "description": "已将 `resctrl llc_occupancy` 的 `ffff` 输出路径统一为 `${locality_mode}/ffff/span1`",
             "status": "completed",
             "passes": true
         },
         {
-            "id": "282",
-            "description": "新增 Python 脚本 `tools/p3_attn_only/plot_slowest_rank_mean_compare.py`，从 `summary.csv` 读取 `balanced/acc-local-l3` 的 `slowest rank mean (ms)` 并生成对比图，补对应单测",
+            "id": "366",
+            "description": "已将磁盘上旧的 `resctrl llc_occupancy` ffff 结果从 `${locality_mode}/span1` 迁移到 `${locality_mode}/ffff/span1`",
             "status": "completed",
             "passes": true
         },
         {
-            "id": "283",
-            "description": "将 `tools/p3_attn_only/plot_slowest_rank_mean_compare.py` 生成的对比图从折线图改为分组柱状图，并补对应单测约束 `ax.bar` 调用",
+            "id": "367",
+            "description": "已新增 `tools/attn_only/llc_occupancy_compare.py`，用于汇总 `resctrl llc_occupancy` 的 `ffff` 与 `0001` 结果并输出对比 CSV",
             "status": "completed",
             "passes": true
         },
         {
-            "id": "284",
-            "description": "扩展 `tools/p3_attn_only/plot_slowest_rank_mean_compare.py`：支持 `balanced_span4/acc-local-l3_span4` 列名并按结果路径自动生成标题；基于 `qhead_32_kvhead_4/NPS1_TP2/prefill-like/global-fixed/batch_16_old_acc/summary.csv` 生成柱状图",
+            "id": "368",
+            "description": "`tools/attn_only/llc_occupancy_compare.py` 已改为按 MB 输出 16 个 `L3` 与 `Total` 的 mean/peak 柱状图，并去掉 `total_nonzero_mean_mb` 等不需要的汇总列",
             "status": "completed",
             "passes": true
         },
         {
-            "id": "285",
-            "description": "润色 `wiki/资料总览/汇报.md` 的文本逻辑，按“观测现象 -> 解释边界 -> 调度对照 -> 当前结论”重组表述并压缩口语化说明",
-            "status": "completed",
-            "passes": true
-        },
-        {
-            "id": "286",
-            "description": "修订 `wiki/实验方案/Qwen3-30B-A3B_attention-only_TP实验步骤.md` 中手工 `DEBUG/TRACE` 命令的日志输出路径，将根目录 `benchmark_*.log` 改为对应 `test_results/P3_AttnOnly/...` 叶子目录并补 `mkdir -p`",
-            "status": "completed",
-            "passes": true
-        },
-        {
-            "id": "287",
-            "description": "基于 `benchmark_balanced_batch1_qhead32_kvhead16_qlen1024.log`、`benchmark_acc_local_l3_batch1_qhead32_kvhead16_span1_qlen1024.log`、`detail_summary.csv` 与 `cpu_attn*_impl.hpp`，分析 `batch_1/qhead_32_kvhead_16` 下 `acc-local-l3` 与 `balanced` 的底层性能差异，并判断与 GPU `ACC` 论文方法的对应边界",
-            "status": "completed",
-            "passes": true
-        },
-        {
-            "id": "288",
-            "description": "根据当前 `csrc/cpu/cpu_attn_acc_locality.cpp`、`cpu_attn_acc_locality_impl.hpp` 与 `vllm/v1/attention/backends/cpu_attn.py` 的实现，修订 `wiki/源码分析/CPU_attention_acc_locality新kernel实现说明.md`，删除已失效的静态条带化/重复执行描述并更新当前调度细节",
+            "id": "369",
+            "description": "`tools/attn_only/llc_occupancy_compare.py` 已改为单页 HTML 报告，支持 `ffff/0001` 对比 `slowest_rank_mean_ms`，并按长度展示 `balanced/acc-local-l3` 的 L3 与 Total 占用",
             "status": "completed",
             "passes": true
         }

@@ -86,6 +86,7 @@ def prepare_attention_run(
     enable_kv_split: bool = False,
     isa: str | None = None,
     seed: int = 0,
+    block_table_seed: int | None = None,
     locality_mode: str = "balanced",
     locality_group_span: int = 1,
 ) -> PreparedAttentionRun:
@@ -141,8 +142,26 @@ def prepare_attention_run(
     )
     kv_lens_tensor = torch.tensor(kv_lens, dtype=torch.int32)
     max_num_blocks_per_seq = (max_kv_len + block_size - 1) // block_size
-    block_tables = torch.randint(
-        0, num_blocks, (num_seqs, max_num_blocks_per_seq), dtype=torch.int32
+    assert max_num_blocks_per_seq < num_blocks, (
+        "num_blocks must cover the maximum KV blocks per sequence plus the "
+        "reserved null block when sampling block tables without replacement."
+    )
+    block_table_generator = None
+    if block_table_seed is not None:
+        block_table_generator = torch.Generator(device="cpu").manual_seed(
+            block_table_seed
+        )
+    block_tables = torch.stack(
+        [
+            torch.randperm(
+                num_blocks - 1,
+                dtype=torch.int32,
+                generator=block_table_generator,
+            )[:max_num_blocks_per_seq]
+            + 1
+            for _ in range(num_seqs)
+        ],
+        dim=0,
     )
 
     slot_mapping = torch.arange(0, num_blocks * block_size, dtype=torch.int64)

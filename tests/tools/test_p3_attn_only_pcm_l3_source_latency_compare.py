@@ -65,25 +65,32 @@ def _write_case(root: Path,
 
         L3 METRICS
         Metric,System (Aggregated),Package (Aggregated)-0
+        L3 Access,{metrics["L3 Access"]:.2f},0.00
+        L3 Miss,{metrics["L3 Miss"]:.2f},0.00
+        L3 Access (pti),{metrics["L3 Access (pti)"]:.2f},0.00
+        L3 Miss (pti),{metrics["L3 Miss (pti)"]:.2f},0.00
+        L3 Miss / second,{metrics["L3 Miss / second"]:.2f},0.00
+        L3 Miss %,{metrics["L3 Miss %"]:.2f},0.00
+        L3 Hit %,{metrics["L3 Hit %"]:.2f},0.00
         Raw L3SampledLatencyAll,{metrics["Raw L3SampledLatencyAll"]:.2f},0.00
         Raw L3SampledLatencyRequestsAll,{metrics["Raw L3SampledLatencyRequestsAll"]:.2f},0.00
         Derived Avg L3 Miss Latency (ns),{metrics["Derived Avg L3 Miss Latency (ns)"]:.2f},0.00
         Raw L3SampledLatencyFromLocalMemory,{metrics["Raw L3SampledLatencyFromLocalMemory"]:.2f},0.00
         Raw L3SampledLatencyRequestsFromLocalMemory,{metrics["Raw L3SampledLatencyRequestsFromLocalMemory"]:.2f},0.00
         Derived Local Memory Avg L3 Miss Latency (ns),{metrics["Derived Local Memory Avg L3 Miss Latency (ns)"]:.2f},0.00
-        Derived Local Memory L3 Miss Latency Share (%),{metrics["Derived Local Memory L3 Miss Latency Share (%)"]:.2f},0.00
-        Raw L3SampledLatencyFromRemoteMemory,{metrics["Raw L3SampledLatencyFromRemoteMemory"]:.2f},0.00
-        Raw L3SampledLatencyRequestsFromRemoteMemory,{metrics["Raw L3SampledLatencyRequestsFromRemoteMemory"]:.2f},0.00
-        Derived Remote Memory Avg L3 Miss Latency (ns),{metrics["Derived Remote Memory Avg L3 Miss Latency (ns)"]:.2f},0.00
-        Derived Remote Memory L3 Miss Latency Share (%),{metrics["Derived Remote Memory L3 Miss Latency Share (%)"]:.2f},0.00
+        Derived Local Memory L3 Miss Request Share (%),{metrics["Derived Local Memory L3 Miss Request Share (%)"]:.2f},0.00
         Raw L3SampledLatencyFromExternalCacheLocal,{metrics["Raw L3SampledLatencyFromExternalCacheLocal"]:.2f},0.00
         Raw L3SampledLatencyRequestsFromExternalCacheLocal,{metrics["Raw L3SampledLatencyRequestsFromExternalCacheLocal"]:.2f},0.00
         Derived another CCX in same node Avg L3 Miss Latency (ns),{metrics["Derived another CCX in same node Avg L3 Miss Latency (ns)"]:.2f},0.00
-        Derived another CCX in same node L3 Miss Latency Share (%),{metrics["Derived another CCX in same node L3 Miss Latency Share (%)"]:.2f},0.00
+        Derived another CCX in same node L3 Miss Request Share (%),{metrics["Derived another CCX in same node L3 Miss Request Share (%)"]:.2f},0.00
+        Raw L3SampledLatencyFromRemoteMemory,{metrics["Raw L3SampledLatencyFromRemoteMemory"]:.2f},0.00
+        Raw L3SampledLatencyRequestsFromRemoteMemory,{metrics["Raw L3SampledLatencyRequestsFromRemoteMemory"]:.2f},0.00
+        Derived Remote Memory Avg L3 Miss Latency (ns),{metrics["Derived Remote Memory Avg L3 Miss Latency (ns)"]:.2f},0.00
+        Derived Remote Memory L3 Miss Request Share (%),{metrics["Derived Remote Memory L3 Miss Request Share (%)"]:.2f},0.00
         Raw L3SampledLatencyFromExternalCacheRemote,{metrics["Raw L3SampledLatencyFromExternalCacheRemote"]:.2f},0.00
         Raw L3SampledLatencyRequestsFromExternalCacheRemote,{metrics["Raw L3SampledLatencyRequestsFromExternalCacheRemote"]:.2f},0.00
         Derived another CCX in remote node Avg L3 Miss Latency (ns),{metrics["Derived another CCX in remote node Avg L3 Miss Latency (ns)"]:.2f},0.00
-        Derived another CCX in remote node L3 Miss Latency Share (%),{metrics["Derived another CCX in remote node L3 Miss Latency Share (%)"]:.2f},0.00
+        Derived another CCX in remote node L3 Miss Request Share (%),{metrics["Derived another CCX in remote node L3 Miss Request Share (%)"]:.2f},0.00
         """),
         encoding="utf-8",
     )
@@ -102,8 +109,9 @@ class TestP3AttnOnlyPcmL3SourceLatencyCompare(unittest.TestCase):
         self.assertIsInstance(args, Namespace)
         self.assertEqual(
             Path(
-                "test_results/P3_AttnOnly/Qwen3-30B-A3B/NPS1_TP2/"
-                "prefill-like/global-fixed/batch_16"),
+                "test_results/P3_AttnOnly/Qwen3-30B-A3B/"
+                "qhead_32_kvhead_16/NPS1_TP2/prefill-like/global-fixed/"
+                "batch_1"),
             args.result_root,
         )
 
@@ -128,31 +136,38 @@ class TestP3AttnOnlyPcmL3SourceLatencyCompare(unittest.TestCase):
                     "CPI (Sys + User)": 0.55,
                     "CPI (Sys)": 1.34,
                     "CPI (User)": 0.54,
+                    "L3 Access": 1993240426.0,
+                    "L3 Miss": 1932407338.0,
+                    "L3 Access (pti)": 101.23,
+                    "L3 Miss (pti)": 98.14,
+                    "L3 Miss / second": 17567339.44,
+                    "L3 Miss %": 96.95,
+                    "L3 Hit %": 3.05,
                     "Raw L3SampledLatencyAll": 90755800163.0,
                     "Raw L3SampledLatencyRequestsAll": 1932407338.0,
                     "Derived Avg L3 Miss Latency (ns)": 469.65,
                     "Raw L3SampledLatencyFromLocalMemory": 541084448.0,
                     "Raw L3SampledLatencyRequestsFromLocalMemory": 23913020.0,
                     "Derived Local Memory Avg L3 Miss Latency (ns)": 226.27,
-                    "Derived Local Memory L3 Miss Latency Share (%)": 0.60,
+                    "Derived Local Memory L3 Miss Request Share (%)": 1.24,
                     "Raw L3SampledLatencyFromRemoteMemory": 46569103.0,
                     "Raw L3SampledLatencyRequestsFromRemoteMemory": 1626560.0,
                     "Derived Remote Memory Avg L3 Miss Latency (ns)": 286.30,
-                    "Derived Remote Memory L3 Miss Latency Share (%)": 0.05,
+                    "Derived Remote Memory L3 Miss Request Share (%)": 0.08,
                     "Raw L3SampledLatencyFromExternalCacheLocal": 89793045927.0,
                     "Raw L3SampledLatencyRequestsFromExternalCacheLocal":
                     1901512297.0,
                     "Derived another CCX in same node Avg L3 Miss Latency (ns)":
                     472.22,
-                    "Derived another CCX in same node L3 Miss Latency Share (%)":
-                    98.94,
+                    "Derived another CCX in same node L3 Miss Request Share (%)":
+                    98.40,
                     "Raw L3SampledLatencyFromExternalCacheRemote": 19140016.0,
                     "Raw L3SampledLatencyRequestsFromExternalCacheRemote":
                     606023.0,
                     "Derived another CCX in remote node Avg L3 Miss Latency (ns)":
                     315.83,
-                    "Derived another CCX in remote node L3 Miss Latency Share (%)":
-                    0.02,
+                    "Derived another CCX in remote node L3 Miss Request Share (%)":
+                    0.03,
                 },
             )
 
@@ -180,27 +195,34 @@ class TestP3AttnOnlyPcmL3SourceLatencyCompare(unittest.TestCase):
             "CPI (Sys + User)": 0.55,
             "CPI (Sys)": 1.34,
             "CPI (User)": 0.54,
+            "L3 Access": 1993240426.0,
+            "L3 Miss": 1932407338.0,
+            "L3 Access (pti)": 101.23,
+            "L3 Miss (pti)": 98.14,
+            "L3 Miss / second": 17567339.44,
+            "L3 Miss %": 96.95,
+            "L3 Hit %": 3.05,
             "Raw L3SampledLatencyAll": 90755800163.0,
             "Raw L3SampledLatencyRequestsAll": 1932407338.0,
             "Derived Avg L3 Miss Latency (ns)": 469.65,
             "Raw L3SampledLatencyFromLocalMemory": 541084448.0,
             "Raw L3SampledLatencyRequestsFromLocalMemory": 23913020.0,
             "Derived Local Memory Avg L3 Miss Latency (ns)": 226.27,
-            "Derived Local Memory L3 Miss Latency Share (%)": 0.60,
+            "Derived Local Memory L3 Miss Request Share (%)": 1.24,
             "Raw L3SampledLatencyFromRemoteMemory": 46569103.0,
             "Raw L3SampledLatencyRequestsFromRemoteMemory": 1626560.0,
             "Derived Remote Memory Avg L3 Miss Latency (ns)": 286.30,
-            "Derived Remote Memory L3 Miss Latency Share (%)": 0.05,
+            "Derived Remote Memory L3 Miss Request Share (%)": 0.08,
             "Raw L3SampledLatencyFromExternalCacheLocal": 89793045927.0,
             "Raw L3SampledLatencyRequestsFromExternalCacheLocal": 1901512297.0,
             "Derived another CCX in same node Avg L3 Miss Latency (ns)": 472.22,
-            "Derived another CCX in same node L3 Miss Latency Share (%)": 98.94,
+            "Derived another CCX in same node L3 Miss Request Share (%)": 98.40,
             "Raw L3SampledLatencyFromExternalCacheRemote": 19140016.0,
             "Raw L3SampledLatencyRequestsFromExternalCacheRemote": 606023.0,
             "Derived another CCX in remote node Avg L3 Miss Latency (ns)":
             315.83,
-            "Derived another CCX in remote node L3 Miss Latency Share (%)":
-            0.02,
+            "Derived another CCX in remote node L3 Miss Request Share (%)":
+            0.03,
         }
         common_acc = {
             **common_balanced,
@@ -266,6 +288,15 @@ class TestP3AttnOnlyPcmL3SourceLatencyCompare(unittest.TestCase):
                 by_metric["IPC (Sys + User)"]["q64_kv64_balanced_span4"],
             )
             self.assertEqual(
+                "17567339.44",
+                by_metric["L3 Miss / second"]["q64_kv64_balanced_span4"],
+            )
+            self.assertEqual(
+                "98.40",
+                by_metric["Derived another CCX in same node L3 Miss Request Share (%)"][
+                    "q64_kv64_balanced_span4"],
+            )
+            self.assertEqual(
                 "154.21",
                 by_metric["Derived Avg L3 Miss Latency (ns)"][
                     "q64_kv64_acc-local-l3_span4"],
@@ -291,6 +322,15 @@ class TestP3AttnOnlyPcmL3SourceLatencyCompare(unittest.TestCase):
                     "Derived another CCX in same node Avg L3 Miss Latency (ns)"
                 ],
             )
+            detail_fields = list(detail_rows[0].keys())
+            self.assertLess(
+                detail_fields.index(
+                    "Derived Local Memory L3 Miss Request Share (%)"),
+                detail_fields.index(
+                    "Derived another CCX in same node L3 Miss Request Share (%)"),
+            )
+            self.assertNotIn("Derived Local Memory L3 Miss Latency Share (%)",
+                             detail_fields)
             self.assertEqual(
                 "",
                 detail_rows[2]["Derived Avg L3 Miss Latency (ns)"],

@@ -12,6 +12,17 @@ from typing import Any
 TRACE_LINE_RE = re.compile(
     r"^(?:rank=(?P<rank>-?\d+)\s+)?CPU attention trace\s+(?P<fields>.+)$"
 )
+TILE_PLAN_RE = re.compile(
+    r"^\s+tile_plan:\s+q_tile_num=(?P<q_tile_num>\d+),\s+"
+    r"default_q_tile_token_num=(?P<default_q_tile_token_num>\d+)\s*$"
+)
+Q_TILE_RE = re.compile(
+    r"^\s+q_tile\s+(?P<q_tile_idx>\d+):\s+"
+    r"q_range=\[(?P<q_start>\d+),(?P<q_end>\d+)\),\s+"
+    r"kv_range=\[(?P<kv_start>\d+),(?P<kv_end>\d+)\),\s+"
+    r"kv_tile_size=(?P<kv_tile_size>\d+),\s+"
+    r"kv_tile_num=(?P<kv_tile_num>\d+)\s*$"
+)
 
 TABLE_COLUMNS = [
     ("line_no", "Line"),
@@ -218,9 +229,36 @@ def load_trace_records(log_path: str | Path) -> list[dict[str, Any]]:
     rank_core_to_ccd = extract_rank_core_to_ccd(log_text)
     records: list[dict[str, Any]] = []
     trace_line_no = 0
+    active_record: dict[str, Any] | None = None
     for raw_line in log_text.splitlines():
         record = parse_trace_line(raw_line)
         if record is None:
+            if active_record is not None:
+                tile_plan_match = TILE_PLAN_RE.match(raw_line)
+                if tile_plan_match:
+                    active_record["q_tile_num"] = int(
+                        tile_plan_match.group("q_tile_num")
+                    )
+                    active_record["default_q_tile_token_num"] = int(
+                        tile_plan_match.group("default_q_tile_token_num")
+                    )
+                    active_record.setdefault("q_tiles", [])
+                    continue
+
+                q_tile_match = Q_TILE_RE.match(raw_line)
+                if q_tile_match:
+                    active_record.setdefault("q_tiles", []).append(
+                        {
+                            "q_tile_idx": int(q_tile_match.group("q_tile_idx")),
+                            "q_start": int(q_tile_match.group("q_start")),
+                            "q_end": int(q_tile_match.group("q_end")),
+                            "kv_start": int(q_tile_match.group("kv_start")),
+                            "kv_end": int(q_tile_match.group("kv_end")),
+                            "kv_tile_size": int(q_tile_match.group("kv_tile_size")),
+                            "kv_tile_num": int(q_tile_match.group("kv_tile_num")),
+                        }
+                    )
+                    continue
             continue
         record["line_no"] = trace_line_no
         record["raw_line"] = raw_line.rstrip("\n")
@@ -233,6 +271,7 @@ def load_trace_records(log_path: str | Path) -> list[dict[str, Any]]:
             if ccd is not None:
                 record["ccd"] = ccd
         records.append(record)
+        active_record = record
         trace_line_no += 1
     return records
 

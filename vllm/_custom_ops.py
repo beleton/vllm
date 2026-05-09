@@ -2985,6 +2985,18 @@ def cpu_attn_get_scheduler_metadata(
     return sheduler_metadata
 
 
+def cpu_attn_reset_timing_profile() -> None:
+    torch.ops._C.cpu_attn_reset_timing_profile()
+
+
+def cpu_attn_reset_runtime_timing_profile() -> None:
+    torch.ops._C.cpu_attn_reset_runtime_timing_profile()
+
+
+def cpu_attn_get_timing_profile() -> str:
+    return torch.ops._C.cpu_attn_get_timing_profile()
+
+
 def cpu_attn_get_scheduler_metadata_acc_locality(
     num_reqs: int,
     num_heads: int,

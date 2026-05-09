@@ -1,98 +1,107 @@
 # 2026-04-05 Qwen3-30B-A3B P3_AttnOnly acc-local-l3 对照观察
 
-> 本文内容已按 `2026-04-09` 最新代码和结果重写，旧代码对应的实验结论不再保留。
-> 结果根目录：`test_results/P3_AttnOnly/Qwen3-30B-A3B/NPS1_TP2/prefill-like/global-fixed/batch_16`
-> 当前对比口径：`balanced_span4` vs `acc-local-l3_span4`
+> 本文已按 `2026-04-20` 当前代码与最新结果重写。
+> 结果文件：`test_results/P3_AttnOnly/Qwen3-30B-A3B/qhead_32_kvhead_16/NPS1_TP2/prefill-like/global-fixed/batch_1/summary.csv`
+> 当前对比口径：`balanced` vs `acc-local-l3`
+> 当前实验参数：`NPS1_TP2 / prefill-like / global-fixed / batch=1 / qhead=32 / kvhead=16 / group_span=1 / q=kv in {64,128,256,512,1024,2048,4096}`
 
 ## 问题
 
-- 在 `NPS1_TP2 + prefill-like + global-fixed + batch=16 + num_query_heads=32 + num_kv_heads=4` 下，修正后的 `acc-local-l3_span4` 相对 `balanced_span4` 是否已经带来稳定收益。
-
-## 方法差异
-
-- `balanced` 仍按全 rank 线程池均衡分工，不按 L3/CCX 拓扑限制 `kv_head`
-- `acc-local-l3` 会先按 `(numa_node, socket_id, l3_cache_id)` 把线程划成 subgroup，再把 `kv_head` 绑定到一个或多个 subgroup
-- 当前代码已修正 `group_span>1` 的执行口径：同一 `kv_head` 覆盖多个 subgroup 时，attention / reduction work 在这些 subgroup 的联合线程池上做唯一分片，不再重复执行同一批 legacy slot
-
-## 从 runtime log 看执行组织方式
-
-- `balanced` 的 log 更像“一个统一线程池在消费一批 work item”
-- 在 `benchmark_balanced.log` 里，可以直接看到：
-  - `thread_num=127`
-  - `effective_thread_num=59`
-  - `actual_kv_head_num=2`
-  - `attention_task_num=118`
-  - `workitem_group_num=59`
-- 这说明在当前 case 下，`balanced` 是把 `2` 个本地 `kv_head` 对应的 attention work 放在一个统一调度口径里做均衡切分
-
-- `acc-local-l3` 的 log 更像“先按 L3 局部域分组，再把每个 kv_head 限定给一组 subgroup”
-- 在 `benchmark_acc_local_l3_span4.log` 里，可以直接看到：
-  - `thread_num=127`
-  - `subgroup_num=8`
-  - `group_span=4`
-  - `actual_kv_head_num=2`
-  - `attention_task_num=118`
-  - `kv_head 0: subgroups=[0,1,2,3]`
-  - `kv_head 1: subgroups=[4,5,6,7]`
-- 这说明在当前 case 下，`acc-local-l3_span4` 不是把所有线程放在一个统一池里抢同一批 work，而是先把线程切成 8 个 locality subgroup，再让 `kv_head 0/1` 分别落到两段不同的 subgroup 区间
-
-- 同一个 log 还显示：
-  - `kv_head 0` 的 `covered_thread_num=64`
-  - `kv_head 1` 的 `covered_thread_num=63`
-  - 各 subgroup 打印出的 `legacy_slots` 是互补分片，例如 `kv_head 0` 在 subgroup `0/1/2/3` 上分别对应 `0-15`、`16-31`、`32-47`、`48-58`
-- 这说明当前修复后的 `acc-local-l3_span4` 已经不是旧版本那种“多个 subgroup 重复做同一批工作”，而是“在 locality 约束下，把同一 `kv_head` 的工作分给一组相邻 subgroup 共同完成”
-
-- 所以从顶层看，这两种方法的核心区别不是算子本身变了，而是“谁和谁一起做同一批 attention work”的组织方式变了：
-  - `balanced` 追求全线程池的均衡分担
-  - `acc-local-l3` 追求先保持共享 K/V 工作集的局部性，再在局部域内部或少量相邻局部域之间分担
+- 在当前 `batch=1 + kvhead=16 + span=1` 口径下，`acc-local-l3` 相对 `balanced` 是否已经带来稳定收益。
 
 ## Dry-run latency
 
-| q_len | kv_len | balanced_span4 slowest rank mean (ms) | acc-local-l3_span4 slowest rank mean (ms) | acc 相对 balanced 变化 |
+| q_len | kv_len | balanced slowest rank mean (ms) | acc-local-l3 slowest rank mean (ms) | acc 相对 balanced 变化 |
 | ---: | ---: | ---: | ---: | ---: |
-| 64 | 64 | 0.074393 | 0.067254 | -9.60% |
-| 128 | 128 | 0.189787 | 0.170897 | -9.95% |
-| 256 | 256 | 0.447598 | 0.439554 | -1.80% |
-| 512 | 512 | 1.487757 | 1.577071 | +6.00% |
+| 64 | 64 | 0.026344 | 0.028935 | +9.84% |
+| 128 | 128 | 0.028220 | 0.029001 | +2.77% |
+| 256 | 256 | 0.056132 | 0.053291 | -5.06% |
+| 512 | 512 | 0.118892 | 0.118152 | -0.62% |
+| 1024 | 1024 | 0.376292 | 0.364960 | -3.01% |
+| 2048 | 2048 | 1.432343 | 1.864542 | +30.17% |
+| 4096 | 4096 | 6.738855 | 7.844426 | +16.41% |
 
-## PCM system aggregated
+## PCM 对照
 
-| q_len | kv_len | mode | L3 Access (pti) | L3 Miss (pti) | L3 Miss % | Ave L3 Miss Latency (ns) | Local Memory / I/O % | another CCX in same node % | another CCX in remote node % | Remote Memory / I/O % |
-| ---: | ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| 64 | 64 | balanced_span4 | 6.20 | 2.59 | 41.79 | 478.60 | 0.65 | 99.30 | 0.04 | 0.03 |
-| 64 | 64 | acc-local-l3_span4 | 0.90 | 0.88 | 97.91 | 154.21 | 0.72 | 98.72 | 0.40 | 0.17 |
-| 128 | 128 | balanced_span4 | 4.64 | 1.58 | 34.07 | 428.16 | 0.99 | 98.95 | 0.06 | 0.03 |
-| 128 | 128 | acc-local-l3_span4 | - | - | - | - | - | - | - | - |
-| 256 | 256 | balanced_span4 | 3.25 | 1.27 | 38.97 | 198.74 | 5.64 | 94.17 | 0.12 | 0.08 |
-| 256 | 256 | acc-local-l3_span4 | 1.27 | 0.82 | 64.10 | 151.19 | 4.39 | 95.26 | 0.25 | 0.12 |
-| 512 | 512 | balanced_span4 | 1.90 | 0.69 | 36.48 | 155.69 | 36.58 | 63.01 | 0.25 | 0.26 |
-| 512 | 512 | acc-local-l3_span4 | 1.27 | 0.43 | 34.17 | 144.42 | 12.82 | 86.52 | 0.46 | 0.24 |
+- `q64/q128`：
+  - `acc-local-l3` 更慢。
+  - `L3 Access (pti)` 更低：`1.32 -> 1.19`、`2.00 -> 1.58`
+  - `L3 Miss (pti)` 更低：`1.20 -> 1.13`、`1.64 -> 1.53`
+  - `Ave L3 Miss Latency (ns)` 更低：`222.92 -> 169.65`、`224.02 -> 192.60`
+
+- `q256/q512/q1024`：
+  - `acc-local-l3` 分别快 `5.06% / 0.62% / 3.01%`。
+  - `L3 Access (pti)` 明显更低：`2.67 -> 1.37`、`3.36 -> 1.20`、`2.91 -> 1.08`
+  - `L3 Miss (pti)` 在 `q256` 更低，在 `q512` 持平，在 `q1024` 略高：`1.31 -> 1.29`、`0.81 -> 0.81`、`0.45 -> 0.47`
+  - `IPC (Sys + User)` 略高：`1.65 -> 1.69`、`2.25 -> 2.29`、`2.62 -> 2.64`
+
+- `q2048/q4096`：
+  - `acc-local-l3` 明显更慢：`+30.17% / +16.41%`
+  - `L3 Access (pti)` 仍更低：`2.04 -> 1.69`、`1.30 -> 1.24`
+  - `L3 Miss (pti)` 仍更低：`0.31 -> 0.25`、`0.35 -> 0.30`
+  - `IPC (Sys + User)` 明显更低：`2.67 -> 2.23`、`1.94 -> 1.77`
+  - `Ave L3 Miss Latency (ns)` 没有变差：`198.09 -> 203.93`、`167.34 -> 161.54`
 
 ## 分析
 
-- `acc-local-l3_span4` 在 `q64/q128/q256` 上已经快于 `balanced_span4`
-- `acc-local-l3_span4` 到 `q512` 时仍慢于 `balanced_span4`
-- `q512` 的 PCM 同时显示，`acc-local-l3_span4` 的 `L3 Access (pti)`、`L3 Miss (pti)`、`L3 Miss %`、`Ave L3 Miss Latency` 都优于 `balanced_span4`
-- `q512` 的 miss 来源分布也更偏向 `another CCX in same node`，并且 `Local Memory / I/O %` 明显下降：`36.58 -> 12.82`
-- 因此当前结果支持这样的判断：修正后的 `acc-local-l3_span4` 已经在部分较短 prefill case 上转化为 latency 收益；但到 `q512` 这一级别时，虽然 locality 指标继续改善，端到端 latency 还没有超过 `balanced_span4`
+- 当前 sweep 下，`acc-local-l3` 没有形成稳定收益。
+- 收益区间只出现在 `q256/q512/q1024`，其中 `q512` 的优势很小，基本接近持平。
+- `q64/q128` 与 `q2048/q4096` 上，`acc-local-l3` 都慢于 `balanced`。
+- `q2048/q4096` 的慢点没有伴随更高的 `L3 Access (pti)` 或 `L3 Miss (pti)`；这份 summary 只能支持“慢点与更低 IPC 同时出现”，不能支持“慢点来自更差的 L3 locality”。
+- 当前这组数据更接近这样的事实：`acc-local-l3` 在一部分中等长度上把 locality 改善转成了 latency 收益，但在更短和更长的长度点上，这种收益都不稳定。
+
+## 容量前提
+
+- 当前代码路径里，`causal prefill` 的后续 `q_tile` 会继续访问更长的 `KV` 前缀；`KV` 数据在 `execute_attention()` 中直接从 `key_cache/value_cache` 读取，同一前缀会被后续 `q_tile` 重访。
+- 对当前 `head_dim=128`、`bf16` 口径，单个 `kv_head` 的 `K+V` 容量是 `512 B / token`。同一 `CCD` 若同时需要复用 `n` 个 `kv_head` 的长前缀，可复用 `KV` 容量压力可近似写成 `n * 512 B / token * kv_len`。
+- 若构造数据使 `acc-local-l3` 在同一 `CCD` 上主要复用 `1` 个 `kv_head`，而 `balanced` 在同一 `CCD` 上复用多个 `kv_head`，则在“单个 `kv_head` 前缀仍可落在本地 `L3`、多个 `kv_head` 聚合前缀已超过本地 `L3`”的长度区间里，`balanced` 更容易在后续 `q_tile` 重访旧前缀时发生本地 `L3` 容量不足，进而增加跨 `CCD` 或内存供数；`acc-local-l3` 理论上更有机会减少这类访问。
+- 这一段只代表当前代码与容量模型支持的理论预期，不代表本页已有实验已经验证该预期。
+
+## 与前一版结论的区别
+
+- 前一版文档记录的是另一组实验：`batch=16 / kvhead=4 / span4`。
+- 前一版结论是：
+  - `acc-local-l3_span4` 在 `q64/q128/q256` 上优于 `balanced_span4`
+  - 到 `q512` 时 locality 指标更好，但 latency 仍落后
+- 当前这组实验是：`batch=1 / kvhead=16 / span1`
+- 当前结论变为：
+  - `q64/q128` 没有转成收益，反而慢于 `balanced`
+  - `q256/q512/q1024` 才出现收益
+  - `q2048/q4096` 又出现明显回退
+
+因此，旧文档中“较短 prefill 已经转正、只在 `q512` 落后”的结论，不适用于当前口径。两组结果唯一一致的部分是：`acc-local-l3` 往往能压低一部分 locality 指标，但这种改善并不会稳定转成端到端 latency 收益。
+
+## Idle baseline
+
+- idle baseline 命令是 `AMDuProfPcm profile -m ipc,l3,dc -a -s -d 40 -I 200 -- sleep 50`，没有 `start-delay`，有效采样窗是 `40s`。
+- 当前这组 `batch=1` attention PCM 命令使用了两种配置：`--start-delay 30000 -d 90` 和 `--start-delay 20000 -d 80`。实验步骤文档已明确 `-d` 从 profiler 启动开始计时并包含 `start-delay`，因此这两类 case 的有效采样窗都应按 `60s` 计算。
+- idle 与 attention 的 L3 压力对照，应优先看 raw count 或按有效采样窗折算后的 `/s`，不能只看 `pti`。
+
+| case | 有效采样窗 | L3 Access/s | L3 Miss/s |
+| --- | ---: | ---: | ---: |
+| idle | 40s | 11.46M | 9.30M |
+| q2048 balanced | 60s | 3412.29M | 348.69M |
+| q2048 acc-local-l3 | 60s | 2413.68M | 272.74M |
+| q4096 balanced | 60s | 1616.09M | 182.99M |
+| q4096 acc-local-l3 | 60s | 1412.21M | 126.42M |
+
+- idle 的 `L3 Miss (pti)` 与 workload 接近，不能推出 attention 期间没有发生很多 `L3 Miss`。
+- 按 raw count 和 `/s` 看，attention 期间的 `L3 Access` 与 `L3 Miss` 都显著高于 idle。
+- idle 报告里的系统 `Utilization` 仍有 `8.85%`，它是背景活动基线，不是零活动基线。
 
 ## 结论
 
-- 不能再沿用旧代码时期“`acc-local-l3` 明显更慢”的结论
-- 当前更准确的结论是：
-  - 修正后的 `acc-local-l3_span4` 已在 `q64/q128/q256` 上优于 `balanced_span4`
-  - 在 `q512` 上，`acc-local-l3_span4` 的 locality 指标更好，但 latency 仍落后 `balanced_span4`
-  - 这说明当前实现已经把一部分 locality 改善转成了实际收益，但收益还没有在所有已测长度点上稳定成立
+- 在当前 `batch=1 / kvhead=16 / span1` 口径下，`acc-local-l3` 没有稳定优于 `balanced`。
+- 当前最好的区间是 `q256/q512/q1024`，但收益幅度有限。
+- 当前最大的退化点是 `q2048/q4096`。
+- 仅凭这份 `summary.csv`，不能把 `q2048/q4096` 的退化归因到更差的 L3 locality；能直接看到的是，这两个长度点上 `acc-local-l3` 更慢，同时 `IPC` 更低，而 `L3 Access/Miss` 没有更高。
 
 ## 边界
 
 - 当前只覆盖 `prefill-like`
 - 当前只覆盖 `NPS1_TP2`
 - 当前只覆盖 `global-fixed`
-- 当前只覆盖 `batch=16`
-- 当前只覆盖 `q=kv in {64, 128, 256, 512}`
-- `q128_kv128/acc-local-l3_span4` 当前没有 PCM 报告，因此该点只能做 latency 对比，不能做 PCM 对比
-
-## 相关结果
-
-- `test_results/P3_AttnOnly/Qwen3-30B-A3B/NPS1_TP2/2026-04-09_prefill_global_fixed_batch16_balanced_span4_vs_acc_local_l3_span4_summary.md`
+- 当前只覆盖 `batch=1`
+- 当前只覆盖 `qhead=32 / kvhead=16`
+- 当前只覆盖 `group_span=1`
+- 当前只覆盖 `q=kv in {64, 128, 256, 512, 1024, 2048, 4096}`

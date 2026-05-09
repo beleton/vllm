@@ -46,7 +46,7 @@ gdb -q /home/zjj/.conda/envs/vllm-cpu/bin/python \
   -ex 'set follow-exec-mode same' \
   -ex 'target localhost :1234' \
   -ex 'set remote exec-file /home/zjj/.conda/envs/vllm-cpu/bin/python' \
-  -ex 'set environment VLLM_CPU_ATTN_ACC_LOCALITY_DEBUG 1' \
+  -ex 'set environment VLLM_CPU_ATTN_DEBUG 1' \
   -ex 'set environment LD_LIBRARY_PATH /home/zjj/.conda/envs/vllm-cpu/lib' \
   -ex 'set logging file /home/zjj/vllm/test_results/debug/gdb_attn_tp2.log' \
   -ex 'set logging overwrite on' \

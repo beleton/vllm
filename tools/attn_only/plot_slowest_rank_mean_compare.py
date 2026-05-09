@@ -134,7 +134,7 @@ def generate_plot(summary_csv: str | Path,
     ax.set_xticks(x_positions)
     ax.set_xticklabels(x_labels)
     ax.set_xlabel("Sequence length (q=kv)")
-    ax.set_ylabel("mean (ms)")
+    ax.set_ylabel("kernel Time (ms)")
     ax.set_title(make_plot_title(summary_csv))
     ax.grid(True, linestyle="--", linewidth=0.6, alpha=0.6)
     ax.legend(frameon=True)

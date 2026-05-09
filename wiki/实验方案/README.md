@@ -2,6 +2,7 @@
 - [DeepSeek-R1-Distill-Llama-8B_NPS实验步骤.md](./DeepSeek-R1-Distill-Llama-8B_NPS实验步骤.md)：历史 `NPS/TP` 复现实验口径与边界
 - [DeepSeek-R1-Distill-Llama-8B_AMDuProfPcm分批实验命令.md](./DeepSeek-R1-Distill-Llama-8B_AMDuProfPcm分批实验命令.md)：`NPS4_TP8` 下 `AMDuProfPcm` 六批采样命令附录
 - [Qwen3-30B-A3B_attention-only_TP实验步骤.md](./Qwen3-30B-A3B_attention-only_TP实验步骤.md)：`attention-only` 多进程 TP 脚本、参数口径和 `AMDuProfPcm` 采样用法
+- [Qwen3-30B-A3B_attention-only_L3驻留验证实验步骤.md](./Qwen3-30B-A3B_attention-only_L3驻留验证实验步骤.md)：验证 `balanced/acc-local-l3` 是否形成本地 `L3` 驻留与 `K/V` 复用的 `PCM/resctrl/CAT/IBS` 命令
 - [Qwen3-30B-A3B_bfloat16统一口径与重跑清单.md](./Qwen3-30B-A3B_bfloat16统一口径与重跑清单.md)：统一 `bfloat16` 口径后哪些正式实验需要重跑
 - [Qwen3-30B-A3B_AMDuProfPcm分批实验命令.md](./Qwen3-30B-A3B_AMDuProfPcm分批实验命令.md)：`NPS1_TP2` 下 `AMDuProfPcm` 六批采样命令附录
 - [Qwen3-30B-A3B_vllm_bench_Prefill_Decode实验步骤.md](./Qwen3-30B-A3B_vllm_bench_Prefill_Decode实验步骤.md)：`strict-batch` 下拆 `prefill/decode` 的 `PCM` 实验口径

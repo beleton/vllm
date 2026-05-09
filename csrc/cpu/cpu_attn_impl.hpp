@@ -1,9 +1,12 @@
 #ifndef CPU_ATTN_HPP
 #define CPU_ATTN_HPP
 
+#include <chrono>
 #include <cstddef>
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
+#include <mutex>
 #include <sstream>
 #include <string>
 #include <type_traits>
@@ -18,27 +21,80 @@
 
 namespace cpu_attention {
 enum class ISA { AMX, VEC, VEC16, NEON };
+enum class TimingProfileMode { kDisabled, kStdout, kAccumulate };
 
 inline bool is_truthy_env(const char* env) {
   return env != nullptr && env[0] != '\0' && env[0] != '0';
 }
 
 inline bool should_log_runtime_summary() {
-  const char* generic_env = std::getenv("VLLM_CPU_ATTN_DEBUG");
-  if (generic_env != nullptr) {
-    return is_truthy_env(generic_env);
-  }
-  return is_truthy_env(std::getenv("VLLM_CPU_ATTN_ACC_LOCALITY_DEBUG"));
+  return is_truthy_env(std::getenv("VLLM_CPU_ATTN_DEBUG"));
 }
 
 inline bool should_log_runtime_trace() {
-  return is_truthy_env(std::getenv("VLLM_CPU_ATTN_TRACE"));
+  return should_log_runtime_summary();
+}
+
+inline TimingProfileMode get_timing_profile_mode() {
+  if (!is_truthy_env(std::getenv("VLLM_CPU_ATTN_PROFILE"))) {
+    return TimingProfileMode::kDisabled;
+  }
+  if (is_truthy_env(std::getenv("VLLM_CPU_ATTN_PROFILE_SILENT"))) {
+    return TimingProfileMode::kAccumulate;
+  }
+  return TimingProfileMode::kStdout;
+}
+
+inline bool should_log_timing_profile() {
+  return get_timing_profile_mode() != TimingProfileMode::kDisabled;
+}
+
+inline bool should_emit_timing_profile_stdout() {
+  return get_timing_profile_mode() == TimingProfileMode::kStdout;
+}
+
+inline bool should_measure_fetch_timing_profile() {
+  return get_timing_profile_mode() == TimingProfileMode::kStdout;
+}
+
+inline bool& scheduler_profile_suppressed_flag() {
+  static thread_local bool suppressed = false;
+  return suppressed;
+}
+
+inline bool should_log_scheduler_profile() {
+  return should_log_timing_profile() && !scheduler_profile_suppressed_flag();
+}
+
+class SchedulerProfileSilencer {
+ public:
+  SchedulerProfileSilencer()
+      : previous_state_(scheduler_profile_suppressed_flag()) {
+    scheduler_profile_suppressed_flag() = true;
+  }
+
+  ~SchedulerProfileSilencer() {
+    scheduler_profile_suppressed_flag() = previous_state_;
+  }
+
+ private:
+  bool previous_state_;
+};
+
+inline uint64_t read_profile_clock_ns() {
+  return static_cast<uint64_t>(
+      std::chrono::duration_cast<std::chrono::nanoseconds>(
+          std::chrono::steady_clock::now().time_since_epoch())
+          .count());
 }
 
 inline void print_runtime_trace_line(const std::string& line) {
 #pragma omp critical(cpu_attention_runtime_trace)
   {
-    const char* trace_rank = std::getenv("VLLM_CPU_ATTN_TRACE_RANK");
+    const char* trace_rank = std::getenv("VLLM_CPU_ATTN_DEBUG_RANK");
+    if (trace_rank == nullptr || trace_rank[0] == '\0') {
+      trace_rank = std::getenv("VLLM_CPU_ATTN_TRACE_RANK");
+    }
     if (trace_rank != nullptr && trace_rank[0] != '\0') {
       std::printf("rank=%s %s\n", trace_rank, line.c_str());
     } else {
@@ -48,8 +104,96 @@ inline void print_runtime_trace_line(const std::string& line) {
   }
 }
 
+inline void append_runtime_tile_plan_trace(std::stringstream& ss,
+                                           int32_t q_token_num,
+                                           int32_t default_q_tile_token_num) {
+  const int32_t q_tile_num =
+      default_q_tile_token_num > 0
+          ? (q_token_num + default_q_tile_token_num - 1) /
+                default_q_tile_token_num
+          : 0;
+  ss << "\n  tile_plan: q_tile_num=" << q_tile_num
+     << ", default_q_tile_token_num=" << default_q_tile_token_num;
+}
+
+inline void append_runtime_q_tile_trace(std::stringstream& ss,
+                                        int32_t q_tile_idx,
+                                        int32_t q_range_start,
+                                        int32_t q_range_end,
+                                        int32_t kv_range_start,
+                                        int32_t kv_range_end,
+                                        int32_t kv_tile_size) {
+  const int32_t kv_span =
+      kv_range_end > kv_range_start ? kv_range_end - kv_range_start : 0;
+  const int32_t kv_tile_num =
+      (kv_span > 0 && kv_tile_size > 0)
+          ? (kv_span + kv_tile_size - 1) / kv_tile_size
+          : 0;
+  ss << "\n    q_tile " << q_tile_idx << ": q_range=[" << q_range_start << ','
+     << q_range_end << "), kv_range=[" << kv_range_start << ','
+     << kv_range_end << "), kv_tile_size=" << kv_tile_size
+     << ", kv_tile_num=" << kv_tile_num;
+}
+
 template <ISA isa, typename scalar_t, int64_t head_dim>
 class AttentionImpl {};
+
+struct alignas(64) RuntimeTimingProfile {
+  uint64_t counter_fetch_ns = 0;
+  uint64_t counter_fetch_count = 0;
+  uint64_t attention_counter_fetch_ns = 0;
+  uint64_t attention_counter_fetch_count = 0;
+  uint64_t reduction_counter_fetch_ns = 0;
+  uint64_t reduction_counter_fetch_count = 0;
+  uint64_t attention_task_body_ns = 0;
+  uint64_t attention_task_count = 0;
+  uint64_t reduction_task_body_ns = 0;
+  uint64_t reduction_task_count = 0;
+  uint64_t execute_attention_ns = 0;
+  uint64_t execute_attention_count = 0;
+};
+
+struct SchedulerTimingProfile {
+  uint64_t call_count = 0;
+  uint64_t scheduler_metadata_ns = 0;
+  uint64_t legacy_scheduler_metadata_ns = 0;
+  uint64_t locality_metadata_build_ns = 0;
+};
+
+struct RuntimeTimingAggregate {
+  uint64_t call_count = 0;
+  RuntimeTimingProfile total;
+};
+
+struct AttentionTimingProfileSnapshot {
+  SchedulerTimingProfile balanced_scheduler;
+  SchedulerTimingProfile acc_locality_scheduler;
+  RuntimeTimingAggregate balanced_runtime;
+  RuntimeTimingAggregate acc_locality_runtime;
+};
+
+class AttentionTimingProfiler {
+ public:
+  void reset();
+  void reset_runtime();
+  void add_balanced_scheduler(uint64_t scheduler_metadata_ns);
+  void add_acc_locality_scheduler(uint64_t legacy_scheduler_metadata_ns,
+                                  uint64_t locality_metadata_build_ns,
+                                  uint64_t scheduler_metadata_ns);
+  void add_balanced_runtime(const RuntimeTimingProfile& profile);
+  void add_acc_locality_runtime(const RuntimeTimingProfile& profile);
+  AttentionTimingProfileSnapshot snapshot() const;
+  std::string snapshot_to_json() const;
+
+ private:
+  mutable std::mutex mutex_;
+  AttentionTimingProfileSnapshot snapshot_;
+};
+
+AttentionTimingProfiler& get_attention_timing_profiler();
+void reset_attention_timing_profile();
+void reset_attention_runtime_timing_profile();
+std::string get_attention_timing_profile_json();
 
 struct AttentionWorkItemGroup {
   int32_t req_id;
@@ -76,14 +220,14 @@ struct AttentionWorkItemGroup {
 
   std::string to_string() const {
     std::stringstream ss;
-    ss << '[' << "req_id: " << req_id << ",\n";
-    ss << "q_token_id_start: " << q_token_id_start << ",\n";
-    ss << "q_token_num: " << q_token_num << ",\n";
-    ss << "kv_split_pos_start: " << kv_split_pos_start << ",\n";
-    ss << "kv_split_pos_end: " << kv_split_pos_end << ",\n";
-    ss << "total_kv_len: " << total_kv_len << ",\n";
-    ss << "split_id: " << split_id << ",\n";
-    ss << "local_split_id: " << local_split_id << ",\n";
+    ss << '[' << "req_id: " << req_id;
+    ss << ", q_token_id_start: " << q_token_id_start;
+    ss << ", q_token_num: " << q_token_num;
+    ss << ", kv_split_pos_start: " << kv_split_pos_start;
+    ss << ", kv_split_pos_end: " << kv_split_pos_end;
+    ss << ", total_kv_len: " << total_kv_len;
+    ss << ", split_id: " << split_id;
+    ss << ", local_split_id: " << local_split_id;
     ss << ']';
 
     return ss.str();
@@ -128,6 +272,8 @@ struct AttentionMetadata {
   int32_t reduction_split_num;
   int32_t thread_num;
   int32_t effective_thread_num;  // non-zero item num in workitem_num_per_thread
+  int32_t max_num_q_token_per_iter;
+  int32_t default_q_tile_token_num;
   int32_t split_kv_q_token_num_threshold;
   int64_t attention_scratchpad_size_per_thread;
   int64_t reduction_scratchpad_size_per_kv_head;
@@ -135,7 +281,7 @@ struct AttentionMetadata {
   ReductionWorkItemGroup* reduction_items_ptr;
   int32_t cu_workitem_num_per_thread[1025] = {
       0};  // prefix sum of workitem_num_per_thread
-  char _padding2[56];
+  char _padding2[112];
 
   AttentionMetadata(ISA isa, int32_t workitem_group_num,
                     int32_t reduction_item_num, int32_t reduction_split_num,
@@ -146,6 +292,8 @@ struct AttentionMetadata {
         reduction_split_num(reduction_split_num),
         thread_num(omp_get_max_threads()),
         effective_thread_num(thread_num),
+        max_num_q_token_per_iter(0),
+        default_q_tile_token_num(0),
         split_kv_q_token_num_threshold(split_kv_q_token_num_threshold),
         attention_scratchpad_size_per_thread(0),
         reduction_scratchpad_size_per_kv_head(0),
@@ -187,6 +335,10 @@ struct AttentionMetadata {
        << ", reduction_split_num: " << reduction_split_num
        << ", thread_num: " << thread_num
        << ", effective_thread_num: " << effective_thread_num
+       << ", max_num_q_token_per_iter: " << max_num_q_token_per_iter
+       << ", default_q_tile_token_num: " << default_q_tile_token_num
+       << ", split_kv_q_token_num_threshold: "
+       << split_kv_q_token_num_threshold
        << ", attention_scratchpad_size_per_thread: "
        << attention_scratchpad_size_per_thread
        << ", reduction_scratchpad_size_per_kv_head: "
@@ -233,6 +385,10 @@ inline std::string build_runtime_summary(const AttentionMetadata& metadata,
   ss << "  isa=" << isa_to_string(metadata.isa)
      << ", thread_num=" << metadata.thread_num
      << ", effective_thread_num=" << metadata.effective_thread_num
+     << ", max_num_q_token_per_iter=" << metadata.max_num_q_token_per_iter
+     << ", default_q_tile_token_num=" << metadata.default_q_tile_token_num
+     << ", split_kv_q_token_num_threshold="
+     << metadata.split_kv_q_token_num_threshold
      << ", actual_kv_head_num=" << actual_kv_head_num
      << ", workitem_group_num=" << metadata.workitem_group_num
      << ", reduction_item_num=" << metadata.reduction_item_num
@@ -255,17 +411,21 @@ inline std::string build_runtime_summary(const AttentionMetadata& metadata,
   }
   ss << "]\n";
 
-  for (int32_t thread_id = 0; thread_id < metadata.thread_num; ++thread_id) {
-    const int32_t begin = metadata.cu_workitem_num_per_thread[thread_id];
-    const int32_t end = metadata.cu_workitem_num_per_thread[thread_id + 1];
-    ss << "  thread " << thread_id << ": workitem_group_range=[" << begin << ','
-       << end << "), workitem_group_num=" << (end - begin) << '\n';
-  }
-
-  for (int32_t workitem_group_idx = 0; workitem_group_idx < metadata.workitem_group_num;
-       ++workitem_group_idx) {
-    ss << "  workitem_group " << workitem_group_idx << ": "
-       << metadata.workitem_groups_ptr[workitem_group_idx].to_string() << '\n';
+  for (int32_t thread_offset = 0; thread_offset < metadata.thread_num;
+       ++thread_offset) {
+    const int32_t begin = metadata.cu_workitem_num_per_thread[thread_offset];
+    const int32_t end = metadata.cu_workitem_num_per_thread[thread_offset + 1];
+    if (begin == end) {
+      continue;
+    }
+    ss << "  thread_offset " << thread_offset
+       << ": workitem_group_range=[" << begin << ',' << end
+       << "), workitem_group_num=" << (end - begin) << '\n';
+    for (int32_t workitem_group_idx = begin; workitem_group_idx < end;
+         ++workitem_group_idx) {
+      ss << "    workitem_group " << workitem_group_idx << ": "
+         << metadata.workitem_groups_ptr[workitem_group_idx].to_string() << '\n';
+    }
   }
 
   for (int32_t reduction_item_idx = 0; reduction_item_idx < metadata.reduction_item_num;
@@ -274,6 +434,67 @@ inline std::string build_runtime_summary(const AttentionMetadata& metadata,
        << metadata.reduction_items_ptr[reduction_item_idx].to_string() << '\n';
   }
 
+  return ss.str();
+}
+
+inline RuntimeTimingProfile aggregate_runtime_timing_profiles(
+    const std::vector<RuntimeTimingProfile>& profiles) {
+  RuntimeTimingProfile total;
+  for (const auto& profile : profiles) {
+    total.counter_fetch_ns += profile.counter_fetch_ns;
+    total.counter_fetch_count += profile.counter_fetch_count;
+    total.attention_counter_fetch_ns += profile.attention_counter_fetch_ns;
+    total.attention_counter_fetch_count +=
+        profile.attention_counter_fetch_count;
+    total.reduction_counter_fetch_ns += profile.reduction_counter_fetch_ns;
+    total.reduction_counter_fetch_count +=
+        profile.reduction_counter_fetch_count;
+    total.attention_task_body_ns += profile.attention_task_body_ns;
+    total.attention_task_count += profile.attention_task_count;
+    total.reduction_task_body_ns += profile.reduction_task_body_ns;
+    total.reduction_task_count += profile.reduction_task_count;
+    total.execute_attention_ns += profile.execute_attention_ns;
+    total.execute_attention_count += profile.execute_attention_count;
+  }
+  return total;
+}
+
+inline std::string build_balanced_runtime_profile_summary(
+    const AttentionMetadata& metadata, int32_t actual_kv_head_num,
+    const std::vector<RuntimeTimingProfile>& profiles) {
+  const RuntimeTimingProfile total =
+      aggregate_runtime_timing_profiles(profiles);
+  const uint64_t attention_task_non_execute_ns =
+      total.attention_task_body_ns > total.execute_attention_ns
+          ? total.attention_task_body_ns - total.execute_attention_ns
+          : 0;
+  std::stringstream ss;
+  ss << "CPU attention balanced runtime profile\n";
+  ss << "  thread_num=" << metadata.thread_num
+     << ", effective_thread_num=" << metadata.effective_thread_num
+     << ", actual_kv_head_num=" << actual_kv_head_num << '\n';
+  ss << "  counter_fetch_ns=" << total.counter_fetch_ns
+     << ", counter_fetch_count=" << total.counter_fetch_count
+     << ", attention_task_body_ns=" << total.attention_task_body_ns
+     << ", attention_task_count=" << total.attention_task_count
+     << ", reduction_task_body_ns=" << total.reduction_task_body_ns
+     << ", reduction_task_count=" << total.reduction_task_count
+     << ", execute_attention_ns=" << total.execute_attention_ns
+     << ", execute_attention_count=" << total.execute_attention_count
+     << ", attention_task_non_execute_ns=" << attention_task_non_execute_ns;
+  if (total.attention_task_count > 0) {
+    ss << ", attention_task_body_avg_ns="
+       << (total.attention_task_body_ns / total.attention_task_count);
+  }
+  if (total.reduction_task_count > 0) {
+    ss << ", reduction_task_body_avg_ns="
+       << (total.reduction_task_body_ns / total.reduction_task_count);
+  }
+  if (total.execute_attention_count > 0) {
+    ss << ", execute_attention_avg_ns="
+       << (total.execute_attention_ns / total.execute_attention_count);
+  }
+  ss << '\n';
   return ss.str();
 }
 
@@ -732,6 +953,8 @@ class AttentionScheduler {
           metadata_ptr->cu_workitem_num_per_thread[i - 1];
     }
     metadata_ptr->effective_thread_num = effective_thread_num;
+    metadata_ptr->max_num_q_token_per_iter = max_num_q_token_per_iter;
+    metadata_ptr->default_q_tile_token_num = default_tile_token_num;
 
     {
       // when q_tile_size = max_num_q_per_iter, requires max
@@ -1438,6 +1661,10 @@ class AttentionMainLoop {
  public:
   void operator()(const AttentionInput* input) {
     const int thread_num = omp_get_max_threads();
+    const bool log_runtime_trace = should_log_runtime_trace();
+    const bool log_timing_profile = should_log_timing_profile();
+    const bool emit_timing_profile_stdout = should_emit_timing_profile_stdout();
+    const bool measure_fetch_timing = should_measure_fetch_timing_profile();
     TORCH_CHECK_EQ(input->metadata->thread_num, thread_num);
     const int32_t q_head_num = input->num_heads;
     const int32_t kv_head_num = input->num_kv_heads;
@@ -1451,12 +1678,18 @@ class AttentionMainLoop {
       std::printf("%s", summary.c_str());
       std::fflush(stdout);
     }
+    std::vector<RuntimeTimingProfile> runtime_profiles;
+    if (log_timing_profile) {
+      runtime_profiles.resize(thread_num);
+    }
     std::atomic<int32_t> guard_counter(0);
     std::atomic<int32_t>* guard_counter_ptr = &guard_counter;
 
 #pragma omp parallel for schedule(static, 1)
     for (int thread_id = 0; thread_id < thread_num; ++thread_id) {
       AttentionMetadata& metadata = *input->metadata;
+      RuntimeTimingProfile* const runtime_profile =
+          log_timing_profile ? &runtime_profiles[thread_id] : nullptr;
       if (metadata.workitem_group_num == 0) {
         continue;
       }
@@ -1547,7 +1780,14 @@ class AttentionMainLoop {
 
       // main loop
       for (;;) {
+        const uint64_t counter_fetch_start_ns =
+            measure_fetch_timing ? read_profile_clock_ns() : 0;
         int64_t task_idx = metadata.acquire_counter();
+        if (measure_fetch_timing) {
+          runtime_profile->counter_fetch_ns +=
+              read_profile_clock_ns() - counter_fetch_start_ns;
+          runtime_profile->counter_fetch_count += 1;
+        }
 
         if (task_idx >= total_counter_num) {
           // no more tasks, leave loop
@@ -1555,6 +1795,8 @@ class AttentionMainLoop {
         }
 
         if (task_idx < workitem_groups_counter_num) {
+          const uint64_t attention_task_start_ns =
+              log_timing_profile ? read_profile_clock_ns() : 0;
           // attention task
           // map task_idx to workitem_groups
           const int32_t kv_head_idx = task_idx / effective_thread_num;
@@ -1583,23 +1825,25 @@ class AttentionMainLoop {
             const int32_t q_token_id_start =
                 current_workitem_group->q_token_id_start;
             const int32_t q_token_num = current_workitem_group->q_token_num;
-            if (should_log_runtime_trace()) {
-              std::stringstream ss;
-              ss << "CPU attention trace "
-                 << "mode=balanced"
-                 << " thread_id=" << thread_id
-                 << " task_idx=" << task_idx
-                 << " thread_offset=" << thread_offset
-                 << " kv_head_idx=" << kv_head_idx
-                 << " workitem_group_idx=" << global_workitem_group_idx
-                 << " req_id=" << current_group_idx
-                 << " q_token_id_start=" << q_token_id_start
-                 << " q_token_num=" << q_token_num
-                 << " kv_split_pos_start=" << kv_start_pos
-                 << " kv_split_pos_end=" << kv_end_pos
-                 << " split_id=" << curr_spilt_id
-                 << " local_split_id=" << current_workitem_group->local_split_id;
-              print_runtime_trace_line(ss.str());
+            std::stringstream trace_ss;
+            if (log_runtime_trace) {
+              trace_ss << "CPU attention trace "
+                       << "mode=balanced"
+                       << " thread_id=" << thread_id
+                       << " task_idx=" << task_idx
+                       << " thread_offset=" << thread_offset
+                       << " kv_head_idx=" << kv_head_idx
+                       << " workitem_group_idx=" << global_workitem_group_idx
+                       << " req_id=" << current_group_idx
+                       << " q_token_id_start=" << q_token_id_start
+                       << " q_token_num=" << q_token_num
+                       << " kv_split_pos_start=" << kv_start_pos
+                       << " kv_split_pos_end=" << kv_end_pos
+                       << " split_id=" << curr_spilt_id
+                       << " local_split_id="
+                       << current_workitem_group->local_split_id;
+              append_runtime_tile_plan_trace(trace_ss, q_token_num,
+                                             default_q_tile_token_num);
             }
 
             // taskgroup general information
@@ -1613,6 +1857,7 @@ class AttentionMainLoop {
             bool use_sink = (s_aux != nullptr &&
                              current_workitem_group->local_split_id == 0);
 
+            int32_t q_tile_idx = 0;
             for (int32_t q_token_offset = 0; q_token_offset < q_token_num;
                  q_token_offset += default_q_tile_token_num) {
               bool first_iter_flag[AttentionScheduler::MaxQTileIterNum];
@@ -1662,6 +1907,14 @@ class AttentionMainLoop {
               const auto [rounded_kv_tile_start_pos, rounded_kv_tile_end_pos] =
                   AttentionScheduler::align_kv_tile_pos(
                       kv_tile_start_pos, kv_tile_end_pos, blocksize_alignment);
+              if (log_runtime_trace) {
+                append_runtime_q_tile_trace(
+                    trace_ss, q_tile_idx,
+                    q_token_id_start + q_token_offset,
+                    q_token_id_start + q_token_offset + actual_q_token_num,
+                    rounded_kv_tile_start_pos, rounded_kv_tile_end_pos,
+                    kv_tile_size);
+              }
 
               int32_t curr_kv_head_idx =
                   use_gqa ? kv_head_idx
@@ -1840,6 +2093,8 @@ class AttentionMainLoop {
                   //             aligned_actual_kv_tile_pos_right);
                   // }
 
+                  const uint64_t execute_attention_start_ns =
+                      log_timing_profile ? read_profile_clock_ns() : 0;
                   attn_impl.template execute_attention<Attention>(
                       curr_q_heads_buffer, curr_k_cache, curr_v_cache,
                       logits_buffer, curr_partial_q_buffer, curr_max_buffer,
@@ -1851,6 +2106,11 @@ class AttentionMainLoop {
                       block_size, sliding_window_left, sliding_window_right,
                       scale, softcap_scale, curr_alibi_slopes,
                       first_iter_flag[q_iter_idx], use_sink, debug_info);
+                  if (log_timing_profile) {
+                    runtime_profile->execute_attention_ns +=
+                        read_profile_clock_ns() - execute_attention_start_ns;
+                    runtime_profile->execute_attention_count += 1;
+                  }
                   first_iter_flag[q_iter_idx] = false;
                 }
               }
@@ -1886,9 +2146,20 @@ class AttentionMainLoop {
                                  split_flag_buffer);
                 }
               }
+              ++q_tile_idx;
+            }
+            if (log_runtime_trace) {
+              print_runtime_trace_line(trace_ss.str());
             }
           }
+          if (log_timing_profile) {
+            runtime_profile->attention_task_body_ns +=
+                read_profile_clock_ns() - attention_task_start_ns;
+            runtime_profile->attention_task_count += 1;
+          }
         } else {
+          const uint64_t reduction_task_start_ns =
+              log_timing_profile ? read_profile_clock_ns() : 0;
           task_idx -= workitem_groups_counter_num;
           const int32_t kv_head_idx = task_idx / reduction_item_num;
           const int32_t item_offset = task_idx % reduction_item_num;
@@ -1933,7 +2204,23 @@ class AttentionMainLoop {
               reinterpret_cast<query_t*>(input->output) + output_buffer_offset,
               split_sum_buffer, actual_q_heads_per_kv, curr_output_token_num,
               q_head_num);
+          if (log_timing_profile) {
+            runtime_profile->reduction_task_body_ns +=
+                read_profile_clock_ns() - reduction_task_start_ns;
+            runtime_profile->reduction_task_count += 1;
+          }
         }
+      }
+    }
+    if (log_timing_profile) {
+      const RuntimeTimingProfile aggregate =
+          aggregate_runtime_timing_profiles(runtime_profiles);
+      get_attention_timing_profiler().add_balanced_runtime(aggregate);
+      if (emit_timing_profile_stdout) {
+        const std::string summary = build_balanced_runtime_profile_summary(
+            *input->metadata, actual_kv_head_num, runtime_profiles);
+        std::printf("%s", summary.c_str());
+        std::fflush(stdout);
       }
     }
     // Reset counter for next call

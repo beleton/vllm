@@ -95,7 +95,157 @@ void maybe_wait_on_first_cpu_attention_call() {
   }
 }
 
+void accumulate_runtime_profile(
+    cpu_attention::RuntimeTimingAggregate& aggregate,
+    const cpu_attention::RuntimeTimingProfile& profile) {
+  aggregate.call_count += 1;
+  aggregate.total.counter_fetch_ns += profile.counter_fetch_ns;
+  aggregate.total.counter_fetch_count += profile.counter_fetch_count;
+  aggregate.total.attention_counter_fetch_ns += profile.attention_counter_fetch_ns;
+  aggregate.total.attention_counter_fetch_count +=
+      profile.attention_counter_fetch_count;
+  aggregate.total.reduction_counter_fetch_ns += profile.reduction_counter_fetch_ns;
+  aggregate.total.reduction_counter_fetch_count +=
+      profile.reduction_counter_fetch_count;
+  aggregate.total.attention_task_body_ns += profile.attention_task_body_ns;
+  aggregate.total.attention_task_count += profile.attention_task_count;
+  aggregate.total.reduction_task_body_ns += profile.reduction_task_body_ns;
+  aggregate.total.reduction_task_count += profile.reduction_task_count;
+  aggregate.total.execute_attention_ns += profile.execute_attention_ns;
+  aggregate.total.execute_attention_count += profile.execute_attention_count;
+}
+
+std::string scheduler_profile_to_json(
+    const cpu_attention::SchedulerTimingProfile& profile) {
+  std::stringstream ss;
+  ss << '{';
+  ss << "\"call_count\":" << profile.call_count << ',';
+  ss << "\"scheduler_metadata_ns\":" << profile.scheduler_metadata_ns << ',';
+  ss << "\"legacy_scheduler_metadata_ns\":"
+     << profile.legacy_scheduler_metadata_ns << ',';
+  ss << "\"locality_metadata_build_ns\":"
+     << profile.locality_metadata_build_ns;
+  ss << '}';
+  return ss.str();
+}
+
+std::string runtime_profile_to_json(
+    const cpu_attention::RuntimeTimingAggregate& aggregate) {
+  const auto& total = aggregate.total;
+  std::stringstream ss;
+  ss << '{';
+  ss << "\"call_count\":" << aggregate.call_count << ',';
+  ss << "\"counter_fetch_ns\":" << total.counter_fetch_ns << ',';
+  ss << "\"counter_fetch_count\":" << total.counter_fetch_count << ',';
+  ss << "\"attention_counter_fetch_ns\":" << total.attention_counter_fetch_ns
+     << ',';
+  ss << "\"attention_counter_fetch_count\":"
+     << total.attention_counter_fetch_count << ',';
+  ss << "\"reduction_counter_fetch_ns\":" << total.reduction_counter_fetch_ns
+     << ',';
+  ss << "\"reduction_counter_fetch_count\":"
+     << total.reduction_counter_fetch_count << ',';
+  ss << "\"attention_task_body_ns\":" << total.attention_task_body_ns << ',';
+  ss << "\"attention_task_count\":" << total.attention_task_count << ',';
+  ss << "\"reduction_task_body_ns\":" << total.reduction_task_body_ns << ',';
+  ss << "\"reduction_task_count\":" << total.reduction_task_count << ',';
+  ss << "\"execute_attention_ns\":" << total.execute_attention_ns << ',';
+  ss << "\"execute_attention_count\":" << total.execute_attention_count;
+  ss << '}';
+  return ss.str();
+}
+
 }  // namespace
+
+namespace cpu_attention {
+
+void AttentionTimingProfiler::reset() {
+  std::lock_guard<std::mutex> guard(mutex_);
+  snapshot_ = {};
+}
+
+void AttentionTimingProfiler::reset_runtime() {
+  std::lock_guard<std::mutex> guard(mutex_);
+  snapshot_.balanced_runtime = {};
+  snapshot_.acc_locality_runtime = {};
+}
+
+void AttentionTimingProfiler::add_balanced_scheduler(
+    uint64_t scheduler_metadata_ns) {
+  std::lock_guard<std::mutex> guard(mutex_);
+  snapshot_.balanced_scheduler.call_count += 1;
+  snapshot_.balanced_scheduler.scheduler_metadata_ns += scheduler_metadata_ns;
+}
+
+void AttentionTimingProfiler::add_acc_locality_scheduler(
+    uint64_t legacy_scheduler_metadata_ns,
+    uint64_t locality_metadata_build_ns,
+    uint64_t scheduler_metadata_ns) {
+  std::lock_guard<std::mutex> guard(mutex_);
+  snapshot_.acc_locality_scheduler.call_count += 1;
+  snapshot_.acc_locality_scheduler.scheduler_metadata_ns +=
+      scheduler_metadata_ns;
+  snapshot_.acc_locality_scheduler.legacy_scheduler_metadata_ns +=
+      legacy_scheduler_metadata_ns;
+  snapshot_.acc_locality_scheduler.locality_metadata_build_ns +=
+      locality_metadata_build_ns;
+}
+
+void AttentionTimingProfiler::add_balanced_runtime(
+    const RuntimeTimingProfile& profile) {
+  std::lock_guard<std::mutex> guard(mutex_);
+  accumulate_runtime_profile(snapshot_.balanced_runtime, profile);
+}
+
+void AttentionTimingProfiler::add_acc_locality_runtime(
+    const RuntimeTimingProfile& profile) {
+  std::lock_guard<std::mutex> guard(mutex_);
+  accumulate_runtime_profile(snapshot_.acc_locality_runtime, profile);
+}
+
+AttentionTimingProfileSnapshot AttentionTimingProfiler::snapshot() const {
+  std::lock_guard<std::mutex> guard(mutex_);
+  return snapshot_;
+}
+
+std::string AttentionTimingProfiler::snapshot_to_json() const {
+  const AttentionTimingProfileSnapshot current = snapshot();
+  std::stringstream ss;
+  ss << '{';
+  ss << "\"balanced\":{";
+  ss << "\"scheduler\":"
+     << scheduler_profile_to_json(current.balanced_scheduler) << ',';
+  ss << "\"runtime\":"
+     << runtime_profile_to_json(current.balanced_runtime);
+  ss << "},";
+  ss << "\"acc_locality\":{";
+  ss << "\"scheduler\":"
+     << scheduler_profile_to_json(current.acc_locality_scheduler) << ',';
+  ss << "\"runtime\":"
+     << runtime_profile_to_json(current.acc_locality_runtime);
+  ss << '}';
+  ss << '}';
+  return ss.str();
+}
+
+AttentionTimingProfiler& get_attention_timing_profiler() {
+  static AttentionTimingProfiler profiler;
+  return profiler;
+}
+
+void reset_attention_timing_profile() {
+  get_attention_timing_profiler().reset();
+}
+
+void reset_attention_runtime_timing_profile() {
+  get_attention_timing_profiler().reset_runtime();
+}
+
+std::string get_attention_timing_profile_json() {
+  return get_attention_timing_profiler().snapshot_to_json();
+}
+
+}  // namespace cpu_attention
 
 torch::Tensor get_scheduler_metadata(
     const int64_t num_req, const int64_t num_heads_q,
@@ -157,8 +307,35 @@ torch::Tensor get_scheduler_metadata(
     });
   });
 
+  const bool log_timing_profile = cpu_attention::should_log_scheduler_profile();
+  const bool emit_timing_profile_stdout =
+      cpu_attention::should_emit_timing_profile_stdout();
+  const uint64_t scheduler_start_ns =
+      log_timing_profile ? cpu_attention::read_profile_clock_ns() : 0;
   cpu_attention::AttentionScheduler scheduler;
   torch::Tensor metadata = scheduler.schedule(input);
+  if (log_timing_profile) {
+    const uint64_t scheduler_metadata_ns =
+        cpu_attention::read_profile_clock_ns() - scheduler_start_ns;
+    cpu_attention::get_attention_timing_profiler().add_balanced_scheduler(
+        scheduler_metadata_ns);
+    if (emit_timing_profile_stdout) {
+      const auto* metadata_ptr =
+          reinterpret_cast<const cpu_attention::AttentionMetadata*>(
+              metadata.data_ptr());
+      std::stringstream ss;
+      ss << "CPU attention scheduler profile\n";
+      ss << "  mode=balanced"
+         << ", scheduler_metadata_ns=" << scheduler_metadata_ns
+         << ", workitem_group_num=" << metadata_ptr->workitem_group_num
+         << ", reduction_item_num=" << metadata_ptr->reduction_item_num
+         << ", reduction_split_num=" << metadata_ptr->reduction_split_num
+         << ", effective_thread_num=" << metadata_ptr->effective_thread_num
+         << '\n';
+      std::printf("%s", ss.str().c_str());
+      std::fflush(stdout);
+    }
+  }
   return metadata;
 }
 

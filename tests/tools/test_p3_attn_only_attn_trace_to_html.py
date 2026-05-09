@@ -18,6 +18,18 @@ ACC_TRACE = (
     "kv_split_pos_end=1024 split_id=-1 local_split_id=0"
 )
 
+TILE_PLAN = "  tile_plan: q_tile_num=2, default_q_tile_token_num=32"
+
+Q_TILE_0 = (
+    "    q_tile 0: q_range=[248,280), kv_range=[0,288), "
+    "kv_tile_size=64, kv_tile_num=5"
+)
+
+Q_TILE_1 = (
+    "    q_tile 1: q_range=[280,360), kv_range=[0,384), "
+    "kv_tile_size=96, kv_tile_num=4"
+)
+
 
 def _rank_results_json(
     rank_to_cpu_ids: dict[int, list[int]],
@@ -140,6 +152,32 @@ class TestAttnTraceToHtml(unittest.TestCase):
         self.assertEqual(270, records[1]["core"])
         self.assertEqual(0, records[0]["ccd"])
         self.assertEqual(0, records[1]["ccd"])
+
+    def test_load_trace_records_attaches_tile_plan_and_q_tiles(self):
+        module = importlib.import_module("tools.p3_attn_only.attn_trace_to_html")
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            log_path = Path(tmpdir) / "trace.log"
+            log_path.write_text(
+                "\n".join(
+                    [
+                        ACC_TRACE,
+                        TILE_PLAN,
+                        Q_TILE_0,
+                        Q_TILE_1,
+                    ]
+                ),
+                encoding="utf-8",
+            )
+
+            records = module.load_trace_records(log_path)
+
+        self.assertEqual(1, len(records))
+        self.assertEqual(2, records[0]["q_tile_num"])
+        self.assertEqual(32, records[0]["default_q_tile_token_num"])
+        self.assertEqual(2, len(records[0]["q_tiles"]))
+        self.assertEqual(248, records[0]["q_tiles"][0]["q_start"])
+        self.assertEqual(384, records[0]["q_tiles"][1]["kv_end"])
 
     def test_build_request_kv_coverage_groups_by_req_and_kv_head(self):
         module = importlib.import_module("tools.p3_attn_only.attn_trace_to_html")

@@ -9,6 +9,12 @@ namespace cpu_utils {
 std::string describe_cpu_locality_groups(const std::string& cpu_ids);
 }
 
+namespace cpu_attention {
+void reset_attention_timing_profile();
+void reset_attention_runtime_timing_profile();
+std::string get_attention_timing_profile_json();
+}
+
 void release_dnnl_matmul_handler(int64_t handler);
 
 int64_t create_onednn_scaled_mm_handler(const torch::Tensor& b,
@@ -332,6 +338,12 @@ TORCH_LIBRARY_EXPAND(TORCH_EXTENSION_NAME, ops) {
       "sliding_window_right, Tensor block_table, float softcap, Tensor "
       "sheduler_metadata, Tensor? s_aux) -> ()",
       &cpu_attention_with_kv_cache_acc_locality);
+  ops.def("cpu_attn_reset_timing_profile() -> ()",
+          &cpu_attention::reset_attention_timing_profile);
+  ops.def("cpu_attn_reset_runtime_timing_profile() -> ()",
+          &cpu_attention::reset_attention_runtime_timing_profile);
+  ops.def("cpu_attn_get_timing_profile() -> str",
+          &cpu_attention::get_attention_timing_profile_json);
 
   // placeholders
   ops.def("static_scaled_fp8_quant() -> ()", placeholder_op);

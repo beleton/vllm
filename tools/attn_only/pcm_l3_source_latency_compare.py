@@ -14,25 +14,32 @@ METRIC_SPECS = [
     ("CPI (Sys + User)", 4),
     ("CPI (Sys)", 4),
     ("CPI (User)", 4),
+    ("L3 Access", 2),
+    ("L3 Miss", 2),
+    ("L3 Access (pti)", 2),
+    ("L3 Miss (pti)", 2),
+    ("L3 Miss / second", 2),
+    ("L3 Miss %", 2),
+    ("L3 Hit %", 2),
     ("Raw L3SampledLatencyAll", 2),
     ("Raw L3SampledLatencyRequestsAll", 2),
     ("Derived Avg L3 Miss Latency (ns)", 2),
     ("Raw L3SampledLatencyFromLocalMemory", 2),
     ("Raw L3SampledLatencyRequestsFromLocalMemory", 2),
     ("Derived Local Memory Avg L3 Miss Latency (ns)", 2),
-    ("Derived Local Memory L3 Miss Latency Share (%)", 2),
-    ("Raw L3SampledLatencyFromRemoteMemory", 2),
-    ("Raw L3SampledLatencyRequestsFromRemoteMemory", 2),
-    ("Derived Remote Memory Avg L3 Miss Latency (ns)", 2),
-    ("Derived Remote Memory L3 Miss Latency Share (%)", 2),
+    ("Derived Local Memory L3 Miss Request Share (%)", 2),
     ("Raw L3SampledLatencyFromExternalCacheLocal", 2),
     ("Raw L3SampledLatencyRequestsFromExternalCacheLocal", 2),
     ("Derived another CCX in same node Avg L3 Miss Latency (ns)", 2),
-    ("Derived another CCX in same node L3 Miss Latency Share (%)", 2),
+    ("Derived another CCX in same node L3 Miss Request Share (%)", 2),
+    ("Raw L3SampledLatencyFromRemoteMemory", 2),
+    ("Raw L3SampledLatencyRequestsFromRemoteMemory", 2),
+    ("Derived Remote Memory Avg L3 Miss Latency (ns)", 2),
+    ("Derived Remote Memory L3 Miss Request Share (%)", 2),
     ("Raw L3SampledLatencyFromExternalCacheRemote", 2),
     ("Raw L3SampledLatencyRequestsFromExternalCacheRemote", 2),
     ("Derived another CCX in remote node Avg L3 Miss Latency (ns)", 2),
-    ("Derived another CCX in remote node L3 Miss Latency Share (%)", 2),
+    ("Derived another CCX in remote node L3 Miss Request Share (%)", 2),
 ]
 
 CASE_METRIC_NAMES = [metric_name for metric_name, _ in METRIC_SPECS]
@@ -52,8 +59,7 @@ CASE_FIELDNAMES = [
 ]
 
 DEFAULT_RESULT_ROOT = Path(
-    "test_results/P3_AttnOnly/Qwen3-30B-A3B/NPS1_TP2/"
-    "prefill-like/global-fixed/batch_16")
+    "test_results/P3_AttnOnly/Qwen3-30B-A3B/qhead_32_kvhead_16/NPS1_TP2/prefill-like/global-fixed/batch_1")
 
 
 def _as_path(value: str | Path) -> Path:

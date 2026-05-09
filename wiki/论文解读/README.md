@@ -6,3 +6,4 @@
 - [CHARM解读.md](./CHARM解读.md)：chiplet CPU 上在 `locality` 与聚合 `L3` 容量之间动态切换的 runtime 设计
 - [AMD_EPYC_Rome与Intel_Cascade_Lake_SP内存性能解读.md](./AMD_EPYC_Rome与Intel_Cascade_Lake_SP内存性能解读.md)：Rome/CLX 的本地与远端缓存、NUMA、双路主存延迟和带宽对比
 - [Optimizing_Sorting_for_Chiplet_Based_CPUs解读.md](./Optimizing_Sorting_for_Chiplet_Based_CPUs解读.md)：chiplet CPU 上按本地/聚合 `L3` 容量切换放置策略并避免 `data shuffling` 的排序优化
+- [Chiplet三篇论文对照与Attention结论验证.md](./Chiplet三篇论文对照与Attention结论验证.md)：三篇 chiplet 论文（OLAP/Sorting/CHARM）的横向对比，以及它们与 Attention L3 不敏感结论的对照验证
