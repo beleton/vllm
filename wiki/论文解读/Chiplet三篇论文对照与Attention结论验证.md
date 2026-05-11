@@ -57,7 +57,7 @@
 - OLAP 论文 Fig.10：32MB（单 chiplet L3）是带宽曲线的拐点
 - CHARM Algorithm 1：`spread_rate` 调整以 remote cache access rate 为信号，隐含假设是「避免 L3 miss 带来的 main memory access」是性能关键
 
-CPU Attention 不符合此条件的证据：Attention 的 working set 中，head 维度在 L2 内完成复用，sequence 维度是 streaming access 不依赖 L3 复用。限制 L3 可用大小对性能影响极小（见 `wiki/实验结果解读/2026-05-06_Qwen3-30B-A3B_CPU_Attention_ACC局部性优化结论.md`），说明 Attention 不满足 L3 敏感性前提。
+CPU Attention 不符合此条件的证据：Attention 的 working set 中，head 维度在 L2 内完成复用，sequence 维度是 streaming access 不依赖 L3 复用。限制 L3 可用大小对性能影响极小（见 [2026-05-06 Qwen3-30B-A3B CPU Attention ACC 局部性优化结论](../实验结果解读/2026-05-06_Qwen3-30B-A3B_CPU_Attention_ACC局部性优化结论.md) 第 5.2 节），说明 Attention 不满足 L3 敏感性前提。
 
 ### 对照场景 2：「线程/进程需要经常跨核心访问」
 
@@ -67,25 +67,47 @@ CPU Attention 不符合此条件的证据：Attention 的 working set 中，head
 - Sorting 论文 Tab.1：shuffling 占排序时间 20-32%，是跨 chiplet 访问的主要来源
 - CHARM 论文 Tab.1：图计算中 NUMA-aware 调度产生大量 remote chiplet access
 
-**但限定在于**：减少跨 CCD 访问如果不同时改善 L3 cache 局部性，效果可能有限。在 chiplet 架构上，跨 chiplet 访问的主要代价不仅是通信延迟，更是丢失了 L3 cache 局部性收益。若数据无论如何都要去主存（如 Attention 的 K/V 在 sequence 维度上 streaming access 无复用），仅减少跨 CCD 通信本身带来的收益有限。
+**但限定在于**：减少跨 CCD 访问如果不同时改善 L3 cache 局部性，效果可能有限。更根本的是，当前 attention 中跨 CCD 访问本身就不是主要瓶颈——PCM 数据（见 [2026-05-06 结论](../实验结果解读/2026-05-06_Qwen3-30B-A3B_CPU_Attention_ACC局部性优化结论.md) 第 5.3 节）显示 q2048+ 区间跨 CCD demand fill（another CCX same node）仅占 0.14%–0.81%，主体 demand fill 来自本地 L2。这意味着即便把跨 CCD 通信降到零，能换回的收益也被上限锁死在很小的范围。这与三篇论文中 workload 的情况不同——OLAP 的 WIM 部署下互联拥塞占 34% 执行时间，排序的 shuffling 占 15%–32%，图计算 NUMA-aware 的 remote chiplet access 达百万次量级。在这些 workload 中跨 chiplet 通信本身就是重要瓶颈，降低它能直接换回显著收益；在 attention 中这个前提不成立。
 
 ### Attention 与三篇论文应用的对比
 
 | 特征 | OLAP/Sorting/Graph | CPU Attention |
 |------|-------------------|---------------|
 | Working set 与 L3 关系 | Working set 在 L3 容量边界附近 | 要么 fit in L2（head 维度），要么 streaming 无复用（seq 维度） |
-| 数据复用模式 | 排序反复扫描 partition；OLAP 扫描过滤后复用；图遍历 frontier 复用 | K/V 在 sequence 维度 streaming access，一次读取后不再复用 |
-| L3 容量敏感度 | 高——能否 fit in L3 决定是否溢出到主存 | 低——限制 L3 大小对性能影响极小（已有实验证据） |
-| 优化杠杆点 | 数据布局 + 任务放置 → 控制 L3 命中率 | 内存带宽/计算吞吐 → L3 命中率不是瓶颈 |
+| 数据复用模式 | 同一数据被多次访问（排序多轮 pass、OLAP 扫描后 repartition/join 重读、图遍历反复触碰邻居）。数据以**只读共享**为主——多 chiplet 同时读同一份数据，coherence 协议在各 chiplet L3 中产生副本 | K/V 在 sequence 维度 streaming access，每个元素只读一次。虽然 K/V 也是只读共享，但无复用意味着 coherence 副本扩散的代价没有被放大 |
+| 副本扩散的后果 | 多 chiplet L3 中同时驻留同一数据的副本，挤占本地 L3 容量；跨 chiplet 的 coherence 消息（snoop/probe/64B cache line 搬运）占用 Infinity Fabric 带宽。**Chiplet 放置通过限制"谁读哪份数据"来消除副本扩散** | 副本虽存在但影响小——每个 cache line 被读一次后就成为冷数据，不占用后续访问的 L3 空间，coherence 消息量也仅与单次读取量成正比 |
+| L3 容量敏感度 | 高——复用期间数据必须留在 L3，容量不够 → eviction → 下次访问走 DRAM（120 ns）。L3 容量直接决定复用访问的命中率 | 低——无复用意味着 L3 只是数据从 DRAM 到 L2 的通道。CAT 0001 将 L3 容量压到 1/16，q8192+ 只退化 0.03%–2.11% [2026-05-06 结论文档 5.2] |
+| 优化杠杆点 | 数据布局 + 任务放置 → 控制跨 chiplet 的 cache coherence 流量与复用时的 L3 命中率 | 内存带宽/计算吞吐 → L3 命中率和 coherence 流量不是瓶颈 |
 
 ## 分析
 
-从三篇论文可直接提炼的事实是：**chiplet 优化有效的充要条件近似于「应用是 L3-cache-sensitive 的」**。具体而言：
+从三篇论文可直接提炼的事实是：**chiplet 级任务/数据放置要有效，必须满足一个条件——应用的性能瓶颈出在"跨 chiplet 的数据访问"上，且这种瓶颈能通过改变放置来消除。** 在三篇论文的 workload 中，"跨 chiplet 数据访问"具体体现为两种形式：
 
-1. 通过优化数据布局可以实质性地改变 L2/L3 命中率；或
-2. 线程间有频繁的细粒度数据交换（排序的 shuffling、图计算的 frontier 传播），使得跨 chiplet 通信本身成为独立于 cache 的瓶颈
+1. **同一份只读数据被多个 chiplet 上的线程反复访问**（OLAP 的表扫描被后续 repartition/join 重读、排序的多轮 pass、图遍历的邻居反复触碰）。硬件 cache coherence 把这份数据在各 chiplet L3 中复制多份，产生副本扩散。副本占用 L3 容量，coherence 协议的消息（64 字节 cache line 的 snoop/probe/搬运）占用 Infinity Fabric 带宽。若每次复用都走本地 L3（24 ns）而非跨 chiplet（~106 ns）或 DRAM（~120 ns），延迟差距被复用次数放大。**Chiplet 放置通过限制"谁读哪份数据"消除副本扩散，让复用访问稳定走本地 L3。**
 
-三篇论文中，条件 1 是主要的，条件 2 往往与条件 1 共存——因为跨 chiplet 通信的代价很大一部分正是由于 L3 局部性被破坏。
+2. **数据在不同 chiplet 之间主动搬迁**（排序的 shuffling、OLAP 的 WIM 下数据跨 chiplet 不均分配导致 join 阶段互联拥塞）。搬迁后的数据在原 chiplet L3 中的副本失效，后续访问全部变成跨 chiplet 或 DRAM 访问。
+
+这两种形式的共同点是：**数据的访问路径（走本地 L3、跨 chiplet L3、还是 DRAM）取决于数据被哪个 chiplet 上的线程访问，而这正是 chiplet 放置可以控制的。**
+
+CPU Attention 既不满足形式 1（K/V streaming access 无复用，coherence 副本扩散的代价不被放大），也不满足形式 2（没有主动的数据搬迁步骤）。因此 chiplet 放置——即 acc-local-l3 做的事——能改变 L3 中的驻留形态（L3 occupancy 降了 23%–32%，L3 Miss/task 降了 17%–53%），但改不动性能，因为在关键路径上本来就不是跨 chiplet 访问在瓶颈。
+
+## 对寻找新研究方向的启示
+
+三篇论文对当前课题的价值不仅是"验证 attention 不走 chiplet 局部性这条路"，更在于它们提供了一套**筛选 chiplet 优化适用场景的方法**：
+
+1. **先确认瓶颈在哪里**：用 PCM / PMU 计数器测量目标阶段（如 prefill、decode、KV cache 管理等）的 demand fill 来源分布。只有当跨 chiplet 访问（another CCX same node）或远端 DRAM 访问（remote DRAM）占到有意义的份额时，chiplet 级放置才有杠杆可撬。三篇论文各自 workload 的全流程执行中跨 chiplet 通信占比都在 15%–34%，而 attention 仅 0.14%–0.81%。
+
+2. **再确认瓶颈能否被放置改变**：即使跨 chiplet 访问占比高，还要看这些访问是否来自"数据和处理它的线程不在同一个 chiplet"。如果是（如 OLAP WIM 部署），改变放置就能消除；如果不是（如数据本身在远端 socket 的 DRAM 中，且无法搬迁），放置改变不了。
+
+3. **用 CAT 实验验证 L3 敏感性**：三篇论文都直接或间接依赖"working set 在 L3 容量边界附近"这一前提。CHARM 用 PMU 事件率来检测这一边界，排序论文用 STREAM benchmark 来标定。当前课题已有的 CAT 0001 实验（[2026-05-06 结论](../实验结果解读/2026-05-06_Qwen3-30B-A3B_CPU_Attention_ACC局部性优化结论.md) 第 5.2 节）提供了同等效力的验证手段——如果极端限制 L3 容量几乎不影响性能，说明该阶段的 working set 不走 L3 复用路径，chiplet 局部性优化就不对症。
+
+这三条筛选条件可以直接用于扫描 LLM 推理中 attention 以外的其他环节。具体而言：
+
+- **Decode**：PD_Test 已确认 decode 的 L3 Miss% 远高于 prefill（96.51% vs 49.43%），但 CAT 实验若也显示 decode 对 L3 容量不敏感，则说明 decode 同理不走 L3 复用路径。
+- **KV cache 管理 / 分布式 prefill 的数据交换**：这些环节涉及跨 rank 或跨 chiplet 的数据搬迁。如果搬迁的 volume 和频率使得跨 chiplet 通信成为可观测的瓶颈，chiplet-aware 放置可能适用。
+- **Whole-model serving 全链路**：attention-only 和 PD_Test 的口径只覆盖单 kernel 或单 request。全链路中可能存在其他产生跨 chiplet 通信的环节（线程池调度、内存分配、batch 拼装等），需要 full-stack profiling 才能识别。
+
+总的原则是：**先找到跨 chiplet 数据访问确实在关键路径上的环节，再考虑 chiplet 级放置优化。** 这条路在 attention 上行不通不意味着在 LLM 推理的其他环节也行不通。
 
 ## 边界
 
