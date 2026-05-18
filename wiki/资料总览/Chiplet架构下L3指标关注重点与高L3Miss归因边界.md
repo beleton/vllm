@@ -7,9 +7,8 @@
 ## 证据底座
 - 直接依据文档：
   - `wiki/论文解读/CHARM解读.md`
-  - `wiki/术语与背景/AMDuProfPcm指标介绍.md`
+  - `wiki/术语与背景/AMDuProf指标与使用.md`
   - `wiki/术语与背景/访存延迟测量.md`
-  - `wiki/术语与背景/AMDuProf背景速记.md`
   - `wiki/实验结果解读/2026-03-26_Qwen3-30B-A3B_PD_Test_Prefill_Decode_PCM观察.md`
   - `wiki/资料总览/当前研究主线.md`
 - 原始数据路径：
@@ -192,7 +191,7 @@
 
 ## 相关页面
 - [../论文解读/CHARM解读.md](../论文解读/CHARM解读.md)
-- [../术语与背景/AMDuProf背景速记.md](../术语与背景/AMDuProf背景速记.md)
+- [../术语与背景/AMDuProf指标与使用.md](../术语与背景/AMDuProf指标与使用.md)
 - [../实验结果解读/2026-03-26_Qwen3-30B-A3B_PD_Test_Prefill_Decode_PCM观察.md](../实验结果解读/2026-03-26_Qwen3-30B-A3B_PD_Test_Prefill_Decode_PCM观察.md)
 - [../实验方案/Qwen3-30B-A3B_P0_AMDuProfCLI函数级归因实验步骤.md](../实验方案/Qwen3-30B-A3B_P0_AMDuProfCLI函数级归因实验步骤.md)
 - [../术语与背景/访存延迟测量.md](../术语与背景/访存延迟测量.md)

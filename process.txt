@@ -33,3 +33,7 @@
 
 2026-05-07 14:27:00 +0800
 - `llc_occupancy_compare` 已切到单页 HTML 报告，默认输出为 `occupancy_compare.html`，页面内同时包含 `Total runtime compare`、`Total occupancy across lengths` 和按长度展开的 `L3_00` 到 `Total` 对照图，所有 mean/peak 统一按 MB 输出。
+
+2026-05-12 11:13:53 +0800
+- 已新增 `wiki/论文解读/A_Comprehensive_Literature_Review_of_AI-Driven_Application_Mapping_and_Scheduling_Techniques_for_Network-on-Chip_Systems解读.md`。
+- 该文是 NoC 应用映射/调度综述，不是原创实验论文；正文存在筛选数量口径不一致，`Table 1` 最终选择 152 篇，但 `Sec. 4.3` 写作趋势分析基于 75 篇，后续引用时按综述口径使用，不把表内百分比当作统一 benchmark 结果。

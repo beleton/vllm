@@ -1,9 +1,22 @@
 # 论文解读
 - [论文解读写作规范.md](./论文解读写作规范.md)：后续撰写论文解读时应遵循的证据、图表引用、措辞与边界规则
 - [论文方法线对比总览.md](./论文方法线对比总览.md)：按方法线归类比较现有论文，提炼各篇最核心思想
+- [待解读论文筛选.md](./待解读论文筛选.md)：筛选尚未创建正式解读的论文，按新应用场景与 chiplet/NUMA 优化方法参考价值排序
 - [GPU_Attention_NUMA_Optimization解读.md](./GPU_Attention_NUMA_Optimization解读.md)：GPU attention 中按共享 `K/V` 工作集做拓扑感知放置
 - [ArcLight解读.md](./ArcLight解读.md)：many-core CPU 上把 NUMA-local 内存、线程组和 TP 联合设计的系统思路
 - [CHARM解读.md](./CHARM解读.md)：chiplet CPU 上在 `locality` 与聚合 `L3` 容量之间动态切换的 runtime 设计
 - [AMD_EPYC_Rome与Intel_Cascade_Lake_SP内存性能解读.md](./AMD_EPYC_Rome与Intel_Cascade_Lake_SP内存性能解读.md)：Rome/CLX 的本地与远端缓存、NUMA、双路主存延迟和带宽对比
 - [Optimizing_Sorting_for_Chiplet_Based_CPUs解读.md](./Optimizing_Sorting_for_Chiplet_Based_CPUs解读.md)：chiplet CPU 上按本地/聚合 `L3` 容量切换放置策略并避免 `data shuffling` 的排序优化
+- [P-MOSS解读.md](./P-MOSS解读.md)：现有 NUMA/chiplet server 上 main-memory B+-Tree index 的 PMU 驱动软件空间调度
+- [Sandwich解读.md](./Sandwich解读.md)：CPU LLM serving 中按 prefill/decode 分相搜索 core utilization、model partition 与动态 shape kernel
+- [The Fake-Busy and True-Idle Problems of Running Graph Applications on Chiplet-Based Multi-Cores 解读](./The_Fake-Busy_and_True-Idle_Problems_of_Running_Graph_Applications_on_Chiplet-Based_Multi-Cores解读.md)：graph 应用在 chiplet OoO 多核上的 fake-busy / true-idle 现象与 ROB/LQ 敏感性
+- [TiNA_Tiered_Network_Buffer_Architecture解读.md](./TiNA_Tiered_Network_Buffer_Architecture解读.md)：chiplet CPU 上按 active mbuf size 在本地与远端 `DCA ways` 间动态放置网络包
+- [MEMPLEX解读.md](./MEMPLEX解读.md)：多 chiplet NUMA + HBM/DDR 系统中结合 DRAM cache 复制与硬件 sector migration 的内存系统设计
+- [Effects_of_Poor_Workload_Partitioning_Chiplet解读.md](./Effects_of_Poor_Workload_Partitioning_Chiplet解读.md)：chiplet DNN 推理系统中任务分区质量对跨 chiplet 通信、拥塞、吞吐和能效的影响
+- [A_Comprehensive_Literature_Review_of_AI-Driven_Application_Mapping_and_Scheduling_Techniques_for_Network-on-Chip_Systems解读.md](./A_Comprehensive_Literature_Review_of_AI-Driven_Application_Mapping_and_Scheduling_Techniques_for_Network-on-Chip_Systems解读.md)：NoC 应用映射与调度方法的分类综述，覆盖动态、静态、混合与机器学习方法
 - [Chiplet三篇论文对照与Attention结论验证.md](./Chiplet三篇论文对照与Attention结论验证.md)：三篇 chiplet 论文（OLAP/Sorting/CHARM）的横向对比，以及它们与 Attention L3 不敏感结论的对照验证
+- [HNSW原论文解读.md](./HNSW原论文解读.md)：解读 HNSW 多层图结构、查询/插入算法、参数体系、实验结果和 chiplet CPU 可迁移边界
+- [Graph-Based_Vector_Search实验评估解读.md](./Graph-Based_Vector_Search实验评估解读.md)：解读图 ANN 方法分类、12 种方法大规模实验评估、baseline 选择和 chiplet CPU 外推边界
+- [The_Impacts_of_Data_Ordering_and_Intrinsic_Dimensionality_on_Recall_in_Hierarchical_Navigable_Small_Worlds解读.md](./The_Impacts_of_Data_Ordering_and_Intrinsic_Dimensionality_on_Recall_in_Hierarchical_Navigable_Small_Worlds解读.md)：解读 HNSW recall 与数据内在维度、LID 插入顺序、benchmark 排名和电商类别导入顺序的关系
+- [HM-ANN解读.md](./HM-ANN解读.md)：解读异构内存中 HNSW 式图索引的热导航结构放置、hub promotion、并行搜索和显式快慢内存边界
+- [d-HNSW解读.md](./d-HNSW解读.md)：解读 RDMA 解耦内存中的 meta-HNSW、sub-HNSW、RDMA-friendly layout、批量加载和 chiplet CPU 不可直接外推点

@@ -1,7 +1,169 @@
 {
     "project": "Chiplet CPU推理加速",
-    "updated_at": "2026-05-07 15:10:00 +0800",
+    "updated_at": "2026-05-18 18:54:54 +08:00",
     "tasks": [
+        {
+            "id": "404",
+            "description": "已阅读 `wiki/原始资料/papers/HNSW/The Impacts of Data, Ordering, and Intrinsic Dimensionality on Recall in Hierarchical Navigable Small Worlds.pdf`，并新增 `wiki/论文解读/The_Impacts_of_Data_Ordering_and_Intrinsic_Dimensionality_on_Recall_in_Hierarchical_Navigable_Small_Worlds解读.md`，详细解读 HNSW recall 与内在维度、LID 插入顺序、benchmark 排名变化和真实电商类别插入顺序的关系；已更新 `wiki/论文解读/README.md` 入口。",
+            "status": "completed",
+            "passes": true
+        },
+        {
+            "id": "403",
+            "description": "已将 HNSW 四篇论文拆分为四份独立详细解读文档：`HNSW原论文解读.md`、`Graph-Based_Vector_Search实验评估解读.md`、`HM-ANN解读.md`、`d-HNSW解读.md`；已删除临时综合文档 `wiki/论文解读/HNSW四篇论文解读.md` 并更新 README 入口。",
+            "status": "completed",
+            "passes": true
+        },
+        {
+            "id": "402",
+            "description": "此前新增的临时综合文档 `wiki/论文解读/HNSW四篇论文解读.md` 已按用户后续要求由任务 403 拆分为四份独立详细解读文档，并删除临时综合文档。",
+            "status": "completed",
+            "passes": true
+        },
+        {
+            "id": "401",
+            "description": "已新增 `wiki/资料总览/HNSW相关工作.md`，按 HNSW 本体、缓存局部性、内存层次与 chiplet 可迁移方法整理相关论文，并在 `wiki/资料总览/README.md` 增加入口。",
+            "status": "completed",
+            "passes": true
+        },
+        {
+            "id": "400",
+            "description": "已下载 HNSW 相关论文到 `wiki/原始资料/papers/HNSW`，文件名按论文标题保存；无法通过常规页面直接下载的 P-HNSW 已改用 MDPI 资源直链完成下载。",
+            "status": "completed",
+            "passes": true
+        },
+        {
+            "id": "399",
+            "description": "已阅读 wiki/原始资料/papers/A CPU-Centric Perspective on Agentic AI.pdf，并新增 wiki/论文解读/A_CPU-Centric_Perspective_on_Agentic_AI解读.md，补充 Agentic AI、orchestrator、tool call、RAG、CPU 并行、batch/KV cache 背景，并解读 CPU 工具延迟、吞吐饱和、能耗、CGAM 与 MAWS 调度优化。",
+            "status": "completed",
+            "passes": true
+        },
+        {
+            "id": "398",
+            "description": "根据 `wiki/论文解读` 中 Optimizing Sorting for Chiplet-Based CPUs、OLAP on Modern Chiplet-Based Processors、CHARM、TiNA 与 P-MOSS 的解读文档生成 `Chiplet相关工作介绍.pptx`",
+            "status": "completed",
+            "passes": true
+        },
+        {
+            "id": "397",
+            "description": "已重写 `wiki/方向调研/AgentToolSandbox_Chiplet研究方向.md`，面向不了解 Agent 的读者补充 Agent、tool call、sandbox、端到端执行流程、VFS、dentry/inode、page cache、overlayfs、cgroup、IPC、PSI、resctrl 等背景术语，并重组共享 OS 路径分片、session/page-cache 亲和、tool-vLLM 混部隔离、sandbox 生命周期强基线等研究点",
+            "status": "completed",
+            "passes": true
+        },
+        {
+            "id": "396",
+            "description": "已重写 `wiki/方向调研/HNSW向量检索_Chiplet研究方向.md`，补充 HNSW 向量检索问题、数据结构、上层贪婪导航、第 0 层 best-first 搜索、节点扩展访存路径，并解释 per-CCD navigator replica、trace-guided cold graph partition/layout、remote expansion、hot-path query grouping 的含义、作用位置、实验方案和风险",
+            "status": "completed",
+            "passes": true
+        },
+        {
+            "id": "395",
+            "description": "已根据 `wiki/论文解读` 目录下现有解读文档重写 `wiki/论文解读/论文方法线对比总览.md`，补齐 P-MOSS、Sandwich、MEMPLEX、DNN 分区质量、NoC 映射综述等新增论文，并按方法线、跨线判据和当前课题结论重组",
+            "status": "completed",
+            "passes": true
+        },
+        {
+            "id": "394",
+            "description": "已将 HNSW、推荐系统 embedding lookup、GNN neighbor sampling 在 CPU 上的常见使用形态和适用边界补入现有方向文档，明确 HNSW-on-CPU 是真实内存索引路径，embedding lookup 常见于 CPU 或 CPU+GPU 推荐系统，GNN 的 CPU 优化主要作用于 sampling/feature loading 数据管线",
+            "status": "completed",
+            "passes": true
+        },
+        {
+            "id": "393",
+            "description": "已新增 `wiki/方向调研/Zen平台_TiNA适用性复核与新增场景.md`，复核 TiNA Remote-tier 策略在 AMD Zen 上因远端 L3/cache 路径接近本地 DRAM 而不适用，并补充 embedding lookup、GNN neighbor sampling、HPC/CFD/FEA/stencil、EDA/RTL/离散事件仿真、k-mer counting 等新候选场景；同步修订网络 I/O 与总览文档",
+            "status": "completed",
+            "passes": true
+        },
+        {
+            "id": "392",
+            "description": "已新增 `wiki/方向调研/Chiplet后续研究方向总览.md`、`HNSW向量检索_Chiplet研究方向.md`、`IVF批量检索_Chiplet研究方向.md`、`LSM_HTAP_Chiplet研究方向.md`、`网络IO_RPC_KV_Chiplet研究方向.md` 与 `AgentToolSandbox_Chiplet研究方向.md`，形成 attention 之外的 chiplet 后续研究方向体系",
+            "status": "completed",
+            "passes": true
+        },
+        {
+            "id": "391",
+            "description": "已新增 `wiki/资料总览/主内存数据库索引_OLAP_StreamProcessing_Chiplet研究备忘.md`，汇总 P-MOSS、OLAP on chiplet processors、sorting、NUMA-aware placement、B+-Tree/LSM/HTAP/vector DB/stream processing 的可迁移机制，并提出面向 AMD EPYC CCD/L3/NUMA 的新研究点、差异与验证方案",
+            "status": "completed",
+            "passes": true
+        },
+        {
+            "id": "390",
+            "description": "已新增 `wiki/资料总览/AgenticAI_Tool执行与Sandbox_Chiplet优化研究备忘.md`，核查 2025-2026 Agent/tool execution/sandbox 论文真实性，并整理可结合 chiplet 的可控变量、验证指标、风险与来源 URL",
+            "status": "completed",
+            "passes": true
+        },
+        {
+            "id": "389",
+            "description": "已新增 `wiki/方向调研/网络IO_DPDK_RPC_KV_Chiplet优化方向研究备忘.md`，汇总 TiNA、DDIO/DCA、SNC、RSS、DPDK queues、per-chiplet buffer tiering、RPC/KV serving tail latency 的可做软件原型、硬件依赖、风险与来源 URL",
+            "status": "completed",
+            "passes": true
+        },
+        {
+            "id": "388",
+            "description": "已完成 attention 之外可结合 chiplet 架构优化的应用场景调研，产出方向汇总文档和 HNSW、IVF、LSM/HTAP、网络/RPC、Agent tool sandbox 等细分研究方向分析文档",
+            "status": "completed",
+            "passes": true
+        },
+        {
+            "id": "387",
+            "description": "已新增 `wiki/论文解读/P-MOSS解读.md` 与 `wiki/论文解读/Sandwich解读.md`，分别解读主内存 B+-Tree index 空间调度与 CPU LLM serving 分相软件优化",
+            "status": "completed",
+            "passes": true
+        },
+        {
+            "id": "386",
+            "description": "已按“现有 chiplet CPU 上的软件优化”约束修订 `wiki/论文解读/待解读论文筛选.md`，将 Delegato 降为硬件背景，优先保留 P-MOSS、Sandwich 与 Server Chiplet Networking",
+            "status": "completed",
+            "passes": true
+        },
+        {
+            "id": "385",
+            "description": "已新增 `wiki/论文解读/待解读论文筛选.md`，筛选尚未创建正式解读的 chiplet/NUMA/LLM 相关论文，并建议优先解读 P-MOSS、Server Chiplet Networking、Sandwich、Delegato",
+            "status": "completed",
+            "passes": true
+        },
+        {
+            "id": "384",
+            "description": "已完善 `wiki/论文解读/OLAP_on_Modern_Chiplet_Based_Processors解读.md` 的 WICP 深度机制分析与实验现象解释，补充 Worker 内部并行、通信权衡、算子条件和 Fig. 3–14 实验解读",
+            "status": "completed",
+            "passes": true
+        },
+        {
+            "id": "383",
+            "description": "已完善 `wiki/论文解读/OLAP_on_Modern_Chiplet_Based_Processors解读.md` 中 Data skew 小节，补充 JCC-H 实验设置、speedup 对照、skew 对 WIM/WIN/WICP 的影响和 skew-aware 资源分配建议",
+            "status": "completed",
+            "passes": true
+        },
+        {
+            "id": "382",
+            "description": "已在 `wiki/论文解读/OLAP_on_Modern_Chiplet_Based_Processors解读.md` 的逐查询分析中补充 SingleStore 的 nested loop join、Bloom filter 与 hash join 解释",
+            "status": "completed",
+            "passes": true
+        },
+        {
+            "id": "381",
+            "description": "已在 `wiki/论文解读/OLAP_on_Modern_Chiplet_Based_Processors解读.md` 补充数据分区、同样分布与 Repartition 概念，并扩展重分区在 join/shuffle 中的解释",
+            "status": "completed",
+            "passes": true
+        },
+        {
+            "id": "380",
+            "description": "已校正 `wiki/论文解读/OLAP_on_Modern_Chiplet_Based_Processors解读.md` 中与论文不一致的 WICP 机制解释、Fig. 7/Fig. 10 数值口径和 Local/Mixed 适用范围",
+            "status": "completed",
+            "passes": true
+        },
+        {
+            "id": "379",
+            "description": "已新增 `wiki/论文解读/Effects_of_Poor_Workload_Partitioning_Chiplet解读.md`，解读 chiplet DNN 推理系统中任务分区质量对跨 chiplet 通信、拥塞、吞吐和能效的影响",
+            "status": "completed",
+            "passes": true
+        },
+        {
+            "id": "378",
+            "description": "已新增 `wiki/论文解读/MEMPLEX解读.md`，解读 MEMPLEX 在多 chiplet NUMA + HBM/DDR 系统中结合 DRAM cache 复制与硬件 sector migration 降低远端访问的内存系统设计",
+            "status": "completed",
+            "passes": true
+        },
         {
             "id": "9",
             "description": "补跑 `prefill_B16_I256_O1`，并补齐 prefill 长度 sweep 以定位 L3 行为转折区间",
@@ -197,6 +359,54 @@
         {
             "id": "369",
             "description": "`tools/attn_only/llc_occupancy_compare.py` 已改为单页 HTML 报告，支持 `ffff/0001` 对比 `slowest_rank_mean_ms`，并按长度展示 `balanced/acc-local-l3` 的 L3 与 Total 占用",
+            "status": "completed",
+            "passes": true
+        },
+        {
+            "id": "370",
+            "description": "已复核 `Agent_Chiplet优化空间调研.md` 与 `RAG_Chiplet优化空间调研.md`，新增 `wiki/资料总览/Agent_RAG_Chiplet调研复核与可行研究点.md`，结论为 RAG/HNSW 检索侧可作为主线，Agent 方向仅适合作为 NUMA-aware sandbox/resource isolation pivot",
+            "status": "completed",
+            "passes": true
+        },
+        {
+            "id": "371",
+            "description": "已二次校正 HNSW 与 Agent 假设，新增 `wiki/资料总览/Agent_RAG_Chiplet二次复核_HNSW设计与Agent假设校正.md`，明确 HNSW 的可执行设计变量（replica/partition/remote expansion/query grouping）并纠正 sandbox 私有数据跨 chiplet 假设",
+            "status": "completed",
+            "passes": true
+        },
+        {
+            "id": "372",
+            "description": "已补充 chiplet 研究的可优化性判据，区分“存在跨 chiplet 开销”和“开销可被复制/分片/迁移/隔离消除”的差别，并将其写入 HNSW 与 Agent 二次复核文档",
+            "status": "completed",
+            "passes": true
+        },
+        {
+            "id": "373",
+            "description": "已新增 `wiki/论文解读/TiNA_Tiered_Network_Buffer_Architecture解读.md`，解读 TiNA 在 chiplet CPU 上按 active mbuf size 动态使用本地/远端 DCA ways 的网络 buffer 架构",
+            "status": "completed",
+            "passes": true
+        },
+        {
+            "id": "374",
+            "description": "已在 `wiki/方向调研/RAG_Chiplet优化空间调研.md` 补充 RAG 基础知识、在线/离线管线、向量索引类型、HNSW 建索引与查询流程，并补充可优化性判据",
+            "status": "completed",
+            "passes": true
+        },
+        {
+            "id": "375",
+            "description": "已新增 `wiki/论文解读/The_Fake-Busy_and_True-Idle_Problems_of_Running_Graph_Applications_on_Chiplet-Based_Multi-Cores解读.md`，解读 graph applications on chiplet-based OoO multi-cores 的 fake-busy / true-idle 问题与 ROB/LQ 敏感性",
+            "status": "completed",
+            "passes": true
+        },
+        {
+            "id": "376",
+            "description": "阅读 `A Comprehensive Literature Review of AI-Driven Application Mapping and Scheduling Techniques for Network-on-Chip Systems.pdf`，并新增论文解读文档",
+            "status": "completed",
+            "passes": true
+        },
+        {
+            "id": "377",
+            "description": "已将 CHARM 代码级运行时层次补充到 `wiki/论文解读/CHARM解读.md` 的方法章节，明确 MPI rank、worker thread、coroutine task、`spread_rate` 与同机单进程约束的关系",
             "status": "completed",
             "passes": true
         }

@@ -1,8 +1,11 @@
 # 资料总览
-- [当前研究主线.md](./当前研究主线.md)：当前课题、硬件边界、已有实验证据和下一步主线
-- [2026-03-30_下一步研究计划.md](./2026-03-30_下一步研究计划.md)：早期按 `P0/P1/P2/P3` 拆分的研究计划归档
-- [早期KT与vLLM实验总结.md](./早期KT与vLLM实验总结.md)：主线建立前的 `kt-kernel`、`bench_moe` 与早期 `NPS/TP` 试验记录
-- [Chiplet架构下L3指标关注重点与高L3Miss归因边界.md](./Chiplet架构下L3指标关注重点与高L3Miss归因边界.md)：当前项目里 `L3` 指标的优先级、归因边界与进入优化的前提
-- [benchmarks与tests入口筛选.md](./benchmarks与tests入口筛选.md)：当前项目最值得优先使用的 bench/tests 入口与用途边界
-- [相关工作检索清单.md](./相关工作检索清单.md)：正式相关工作清单、优先级和检索交接信息
-- [相关工作论文筛选与研究方向建议.md](./相关工作论文筛选与研究方向建议.md)：当前相关工作筛选结果和高可行研究方向
+
+- [当前研究主线.md](./当前研究主线.md)：课题、硬件边界、ACC 尝试结论与当前状态
+- [ACC-local-L3尝试分析.md](./ACC-local-L3尝试分析.md)：ACC 尝试的完整分析流程、实测数据与结论
+- [Chiplet架构下L3指标关注重点与高L3Miss归因边界.md](./Chiplet架构下L3指标关注重点与高L3Miss归因边界.md)：L3 指标优先级、归因判据与进入优化的前提
+- [benchmarks与tests入口筛选.md](./benchmarks与tests入口筛选.md)：最值得优先使用的 bench/tests 入口与用途边界
+- [相关工作与方向.md](./相关工作与方向.md)：相关论文分级、工程资料与可行研究方向
+- [HNSW相关工作.md](./HNSW相关工作.md)：HNSW、图 ANN、缓存局部性和内存层次相关论文梳理
+- [主内存数据库索引_OLAP_StreamProcessing_Chiplet研究备忘.md](./主内存数据库索引_OLAP_StreamProcessing_Chiplet研究备忘.md)：面向 AMD EPYC CCD/L3/NUMA 的数据库索引、OLAP、stream processing 可迁移机制与新研究点
+- [早期探索记录.md](./早期探索记录.md)：主线建立前的 KT 实验、NPS 观察与 P0 归因结论（历史归档）
+- [AgenticAI_Tool执行与Sandbox_Chiplet优化研究备忘.md](./AgenticAI_Tool执行与Sandbox_Chiplet优化研究备忘.md)：聚焦 tool execution、sandbox/container、page cache、cgroup、IPC、资源隔离与 tail latency 的 chiplet 研究备忘，附 2025-2026 论文真实性核查
