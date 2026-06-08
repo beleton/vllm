@@ -17,6 +17,7 @@
 - [Chiplet三篇论文对照与Attention结论验证.md](./Chiplet三篇论文对照与Attention结论验证.md)：三篇 chiplet 论文（OLAP/Sorting/CHARM）的横向对比，以及它们与 Attention L3 不敏感结论的对照验证
 - [HNSW原论文解读.md](./HNSW原论文解读.md)：解读 HNSW 多层图结构、查询/插入算法、参数体系、实验结果和 chiplet CPU 可迁移边界
 - [Graph-Based_Vector_Search实验评估解读.md](./Graph-Based_Vector_Search实验评估解读.md)：解读图 ANN 方法分类、12 种方法大规模实验评估、baseline 选择和 chiplet CPU 外推边界
+- [Graph_Reordering_for_Cache-Efficient_Near_Neighbor_Search解读.md](./Graph_Reordering_for_Cache-Efficient_Near_Neighbor_Search解读.md)：解读 HNSW 图重排序通过改善节点内存布局降低 cache miss、提升平均和 P99 查询延迟的机制、实验结果和 chiplet CPU 外推边界
 - [The_Impacts_of_Data_Ordering_and_Intrinsic_Dimensionality_on_Recall_in_Hierarchical_Navigable_Small_Worlds解读.md](./The_Impacts_of_Data_Ordering_and_Intrinsic_Dimensionality_on_Recall_in_Hierarchical_Navigable_Small_Worlds解读.md)：解读 HNSW recall 与数据内在维度、LID 插入顺序、benchmark 排名和电商类别导入顺序的关系
 - [HM-ANN解读.md](./HM-ANN解读.md)：解读异构内存中 HNSW 式图索引的热导航结构放置、hub promotion、并行搜索和显式快慢内存边界
 - [d-HNSW解读.md](./d-HNSW解读.md)：解读 RDMA 解耦内存中的 meta-HNSW、sub-HNSW、RDMA-friendly layout、批量加载和 chiplet CPU 不可直接外推点

@@ -38,15 +38,3 @@ Chiplet CPU 的关键不是封装形式，而是局部性：本地 L3 和本地�
 | 跨 CCD 远端 cache 路径 | ~110–150 ns |
 
 跨 CCD 访问代价已接近本地内存（120 ns），因此同一 socket 不是低延迟共享域，低延迟共享范围更接近本地 L3/CCD。
-
-## AMD / Intel Chiplet 与 AMX/L3 的关系
-
-- chiplet/MCM、tile、SNC domain、socket 不是同一层概念。
-- Intel AMX 作用在矩阵乘法执行层；L3 感知放置作用在缓存/拓扑/内存层。两者是不同层优化，在 attention/KV cache 场景里拓扑与缓存局部性问题相对更独立。
-- 当前 AMD EPYC 9745 不支持 AMX，但不影响 L3 感知放置作为独立研究方向。
-
-## 对 LLM 推理的启发
-
-- Decode 阶段通常更容易受内存带宽、L3 局部性和线程放置影响。
-- 只按 NUMA 均匀切分不一定最优，下层还有 CCD/CCX/L3 竞争。
-- 小工作集更适合集中放置；大工作集或高 miss 场景更可能受益于分散放置。

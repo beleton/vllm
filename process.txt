@@ -37,3 +37,24 @@
 2026-05-12 11:13:53 +0800
 - 已新增 `wiki/论文解读/A_Comprehensive_Literature_Review_of_AI-Driven_Application_Mapping_and_Scheduling_Techniques_for_Network-on-Chip_Systems解读.md`。
 - 该文是 NoC 应用映射/调度综述，不是原创实验论文；正文存在筛选数量口径不一致，`Table 1` 最终选择 152 篇，但 `Sec. 4.3` 写作趋势分析基于 75 篇，后续引用时按综述口径使用，不把表内百分比当作统一 benchmark 结果。
+
+2026-05-26 23:45:00 +0800
+- HNSW 实验1.1已写入 `/home/zjj/HNSW/实验1.1.md`；cache-line 采集结果在 `/home/zjj/HNSW/Lab1/cacheline_2026-05-26/`，结果分析在该目录 `analysis.md`。
+- 新增解析脚本 `/home/zjj/HNSW/scripts/parse_hnsw_cacheline_db.py`，可从 AMDuProf `memory` 配置生成的 `cpu.db` 聚合 `InnerProductSIMD16ExtAVX512` 的静态 cache-line 与同窗口 cache-line 指标。
+- 当前结论：`same/same_group16` 明显提高 Local Cache hit 并降低 Local DRAM hit；窗口级 cache-line 重叠方向支持同步访问压力更高，但绝对占比很低，不能单独证明大量 cache line 被 16 核同时请求。
+
+2026-05-27 00:30:00 +0800
+- 已新增 `wiki/方向调研/HNSW之外_Chiplet_Locality应用场景研究方向分析.md`，用于跳出 HNSW similar-query scheduler 后筛选更适合 chiplet locality 的应用方向。
+- 已根据 `Parallelization_Strategies_for_DLRM_Embedding_Bag_Operator_on_AMD_CPUs.pdf` 修订方向排序：推荐系统 embedding lookup 不再作为第一主线，因为该论文已覆盖表到 CCD/core-group 的任务划分、CCD 内多线程查同一张表、hot row cache reuse 和负载均衡。当前推荐顺序改为：GNN neighbor sampling / feature gather；Agent tool sandbox；LSM/HTAP phase-aware 调度。Embedding 只保留为 HT/TT baseline 之上的 request-level co-location 窄化备选。
+
+2026-06-03 00:00:00 +0800
+- `wiki/方向调研/HNSW_CCD-aware_Dispatcher技术分析报告.md` 已记录 HNSW upper-entry dispatcher 路线：先执行并复用 HNSW 上层 greedy search 得到第 0 层入口 `ep(q)`，按 `ep(q)` 或 entry region 做 query-to-CCD routing；不做文档分片，不限制第 0 层全局搜索范围，不改变 recall。
+- 下一步规划优先做 trace 验证：统计 same-entry / same-entry-region / cosine-oracle / path-oracle / random 的 L0 visited-node overlap 与 search-only latency，再决定是否实现 split-search dispatcher。不要先继续优化 `cosine-oracle` 或现有 `simhash-window`。
+
+2026-06-03 16:30:00 +0800
+- 实验4.2 q8192 结果已分析，见 `/home/zjj/HNSW/实验结果分析/实验4.2结果分析.md`。`path-greedy-oracle` 将 pairwise overlap 从 35.50 提高到 850.45，但 search-only `avg_ms_per_query` 只从 7.226857 降到 6.937976，改善约 4.00%，低于 15% 判定线。
+- 当前不建议实现 HNSW upper-entry split-search dispatcher。若继续实验4.3，应定位为低成本 routing key 的补充验证，而不是工程实现前置步骤。
+
+2026-06-03 18:10:00 +0800
+- HNSW 实验4.3已改为 8 CCD `ccd-batch` 路线，不再做 fixed-round/order replay。Lab4 新增 `--scheduler ccd-batch`、`--dispatcher entry-region-static`、`--entry-trace-output`、`--entry-nodes-path`、`--entry-region-map-output`。
+- `/home/zjj/hnswlib` 新增 `knn_query_with_entries`、`knn_query_pinned_groups` 和 `knn_query_entry_region_pinned_groups` 绑定；`entry-region-static` timing 现在在线执行 `search_upper_entry(q) -> ep(q)`，按静态 map 路由后从 `ep(q)` 执行 L0 search。已用 `conda run -n hnsw python setup.py build_ext --inplace` 重建。4.3命令已写入 `/home/zjj/HNSW/实验/实验4.md`。

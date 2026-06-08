@@ -1,7 +1,7 @@
 # CHARM 解读
 
 ## 问题
-Chiplet CPU 在同一 NUMA domain 内仍存在不同的 L3 访问延迟和核间通信代价——AMD EPYC Milan 上同 NUMA domain 内延迟分三组：约 25 ns（intra-chiplet）、约 80–90 ns（同 NUMA 域内中间层）、超过 150 ns（更远层级）（Fig. 3）。只按 NUMA node 建模的调度与内存放置策略无法覆盖 chiplet 级延迟差异。CHARM 要回答的是：能否构建一个运行时系统，使各类并行应用自动在"chiplet 局部性"与"更大聚合 L3 容量"之间做出自适应选择。
+Chiplet CPU 在同一 NUMA domain 内仍存在不同的 L3 访问延迟和核间通信代价——AMD EPYC Milan 上同 NUMA domain 内延迟分三组：约 25 ns（intra-chiplet）、约 80–90 ns（同 NUMA 域内中间层）、超过 150 ns（更远层级）（Fig. 3）。只按 NUMA node 建模的调度与内存放置策略无法覆盖 chiplet 级延迟差异。CHARM 要回答的是：能否构建一个运行时系统，使应用自动在"chiplet 局部性"与"更大聚合 L3 容量"之间做出自适应选择。
 
 ## 背景：CHARM 覆盖的四类 Workload 及其访存特征
 
@@ -176,6 +176,14 @@ CHARM 用 `libpfm` 直接读 PMU 事件计数器：
 - Intel：`OFFCORE_RESPONSE`
 
 高频轮询时 profiling 开销约 5%–10%，轮询频率可调。论文将这些计数器的来源层次概括为 on-chip（intra-CCX）、on-die（inter-CCX）和 remote memory（inter-NUMA）。
+
+### 机制局限：容量侧判断没有被充分实现
+
+论文反复强调 CHARM 要在"chiplet 局部性"与"更大聚合 L3 容量"之间动态切换；Fig. 5 的 LocalCache vs DistributedCache 微基准也说明，当 working set 超过单个 CCD 的 32 MB L3 后，分散到更多 chiplet 可能更优。但具体调度算法并没有直接估计 working set size，也没有把 L3 hit rate、L3 miss rate、local/remote DRAM access rate 或 MPKI 作为 spread/compact 的主要输入。
+
+Algorithm 1 的实际决策变量是 cache fill event rate：事件率高于 `RMT_CHIP_ACCESS_RATE` 就增大 `spread_rate`，否则减小 `spread_rate`。论文文字将其解释为 remote memory/cache accesses；代码中的 CHARM scheduler 也只读取单个事件 `ANY_DATA_CACHE_FILLS_FROM_SYSTEM:INT_CACHE` 来调整 `spread_rate`。虽然 `PerfCounter` 注册了 `EXT_CACHE_LCL`、`EXT_CACHE_RMT`、`MEM_IO_LCL`、`MEM_IO_RMT`、Intel `LOCAL_DRAM/REMOTE_DRAM`、`L2_MISS` 等 counter，但 CHARM 的 spread/compact 决策没有使用这些容量压力相关信号。
+
+这意味着存在一个论文机制没有很好覆盖的场景：如果 workload 的线程主要访问自己的大块私有或分区数据，集中在一个 CCD 时可能主要表现为 L3 容量不足、L3 命中率下降、DRAM 访问上升，而不一定产生很多跨 CCD cache traffic。在这种情况下，把线程分散到多个 CCD 利用 aggregate L3 可能是更优策略，但 CHARM 的 remote-event-driven 策略可能不会触发扩散，甚至会因为 remote rate 低而继续收紧。换言之，论文在概念层面提出了 locality vs aggregate L3 capacity 的 trade-off，但原型机制更偏向用 remote/cache-fill 流量近似这个 trade-off，容量侧判断并不完整。
 
 ## 实验设置
 
